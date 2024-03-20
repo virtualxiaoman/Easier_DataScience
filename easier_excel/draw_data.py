@@ -3,6 +3,8 @@ import pandas as pd
 import seaborn as sns
 import numpy as np
 import os
+
+import torch
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression
@@ -101,8 +103,10 @@ def plot_xy(x, y, axes=None, title="Title", label='label', color='blue', linesty
 
 def plot_xys(x, y_list, labels=None, colors=None, linestyles=None, axes=None):
     """
-    绘制多个y
-    暂不支持7个及以上的y作为输入，除非自行传入colors, linestyles
+    在同一幅图上绘制多个y
+    暂不支持9个及以上的y直接作为输入，除非自行传入colors, linestyles以与y匹配
+    使用示例：
+        xm_dd.plot_xys(x, [y1, y2, y3], labels=['Sin', 'Cos', 'Tan'], colors=['blue', 'green', 'red'], axes=(-5, 5, -5, 5))
     :param x: x轴
     :param y_list: 若干个y
     :param labels: y的标签
@@ -136,6 +140,61 @@ def plot_xys(x, y_list, labels=None, colors=None, linestyles=None, axes=None):
     ax.legend()
     ax.grid(True)
     plt.show()
+
+
+def plot_f_and_df(x, y=None, y_func=None, use_ax=False, ax=None, just_f=False, just_df=False, font_name='Times New Roman',
+                  x_label = r'$x$', y_label_f = r'$f(x)$',  y_label_df = r'$\frac{df}{dx}$', label_f = r'$f(x)$',
+                  lable_df = r'$\frac{df}{dx}$'):
+    """
+
+
+    绘制f与其导函数。
+    use_ax=False的示例：
+        xm_dd.plot_f_and_df(x, y_func=f, use_ax=False)
+    使用ax的示例：
+        fig, axs = plt.subplots(2, 1, figsize=(12, 6))
+        axs = xm_dd.plot_f_and_df(x, y_func=f, use_ax=True, ax=axs)
+        plt.show()
+    :param x: 传入x坐标的值
+    :param y: 传入y的值
+    :param y_func: 传入函数f(x)，通过函数f计算y
+    :param use_ax: 是否使用ax
+    :param ax: 如果use_ax，就需要传入你的ax
+    :param just_f: 是否只绘制f(x)
+    :param just_df: 是否只绘制df(x)
+    :return:
+    """
+    if y is None:
+        y = torch.zeros_like(x)
+        for i, x_i in enumerate(x):
+            y[i] = y_func(x_i)
+    y.backward(torch.ones_like(y))
+    dy = x.grad
+    if not use_ax:
+        fig, axs = plt.subplots(1, 2)
+        axs[0] = plot_xy(x.detach().numpy(), y.detach().numpy(), use_ax=True, show_plt=False, label=label_f,
+                         title=label_f, ax=axs[0], x_label=x_label, y_label=y_label_f, font_name=font_name)
+        axs[1] = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=lable_df,
+                         title=lable_df, ax=axs[1], x_label=x_label, y_label=y_label_df, font_name=font_name)
+        plt.show()
+    else:
+        if ax is None:
+            print(CT("Warning in func").red(), CT("plot_f_and_df").yellow(),
+                  CT(": 在use_ax的情况下，应该主动传入ax，这种情况下不会继续为你绘图了").red())
+        else:
+            if just_f:
+                ax = plot_xy(x.detach().numpy(), y.detach().numpy(), use_ax=True, show_plt=False, label=label_f,
+                             title=label_f, x_label=x_label, y_label=y_label_f, ax=ax, font_name=font_name)
+                return ax
+            if just_df:
+                ax = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=lable_df,
+                             title=lable_df, x_label=x_label, y_label=y_label_df, ax=ax, font_name=font_name)
+                return ax
+            ax[0] = plot_xy(x.detach().numpy(), y.detach().numpy(), use_ax=True, show_plt=False, label=label_f,
+                            title=label_f, x_label=x_label, y_label=y_label_f, ax=ax[0], font_name=font_name)
+            ax[1] = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=lable_df,
+                            title=lable_df, x_label=x_label, y_label=y_label_df, ax=ax[1], font_name=font_name)
+            return ax
 
 
 class draw_df:
@@ -387,7 +446,7 @@ class draw_df:
                     sns.kdeplot(self.df[self.df[target_name] == target_value][feature_name],
                                 label=f'{target_name}={target_value}', fill=True, color=color)
         else:
-            sns.kdeplot(self.df[:][feature_name], label='ALL', fill=True, color='blue')
+            sns.kdeplot(self.df[:][feature_name], label=feature_name, fill=True, color='blue')
         if adjust_params is None:
             plt.tight_layout()
         else:
