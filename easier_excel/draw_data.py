@@ -143,11 +143,9 @@ def plot_xys(x, y_list, labels=None, colors=None, linestyles=None, axes=None):
 
 
 def plot_f_and_df(x, y=None, y_func=None, use_ax=False, ax=None, just_f=False, just_df=False, font_name='Times New Roman',
-                  x_label = r'$x$', y_label_f = r'$f(x)$',  y_label_df = r'$\frac{df}{dx}$', label_f = r'$f(x)$',
-                  lable_df = r'$\frac{df}{dx}$'):
+                  x_label=r'$x$', y_label_f=r'$f(x)$', y_label_df=r'$\frac{df}{dx}$', label_f=r'$f(x)$',
+                  label_df=r'$\frac{df}{dx}$', save_name=None):
     """
-
-
     绘制f与其导函数。
     use_ax=False的示例：
         xm_dd.plot_f_and_df(x, y_func=f, use_ax=False)
@@ -162,7 +160,14 @@ def plot_f_and_df(x, y=None, y_func=None, use_ax=False, ax=None, just_f=False, j
     :param ax: 如果use_ax，就需要传入你的ax
     :param just_f: 是否只绘制f(x)
     :param just_df: 是否只绘制df(x)
-    :return:
+    :param font_name: 字体，默认TNR
+    :param x_label: x轴的标签
+    :param y_label_f: f(x)的y轴标签
+    :param y_label_df: df(x)的y轴标签
+    :param label_f: f(x)的label
+    :param label_df: df(x)的label
+    :param save_name: 保存的地址与名字
+    :return: ax(如果use_ax的话)
     """
     if y is None:
         y = torch.zeros_like(x)
@@ -174,8 +179,13 @@ def plot_f_and_df(x, y=None, y_func=None, use_ax=False, ax=None, just_f=False, j
         fig, axs = plt.subplots(1, 2)
         axs[0] = plot_xy(x.detach().numpy(), y.detach().numpy(), use_ax=True, show_plt=False, label=label_f,
                          title=label_f, ax=axs[0], x_label=x_label, y_label=y_label_f, font_name=font_name)
-        axs[1] = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=lable_df,
-                         title=lable_df, ax=axs[1], x_label=x_label, y_label=y_label_df, font_name=font_name)
+        axs[1] = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=label_df,
+                         title=label_df, ax=axs[1], x_label=x_label, y_label=y_label_df, font_name=font_name)
+        if isinstance(save_name, str):
+            if not os.path.exists(save_name):
+                os.makedirs(save_name)
+            # 必须先保存再plt.show()，不然show会释放缓冲区里的图像
+            plt.savefig(os.path.join(save_name), dpi=300)  # dpi为了调节清晰度
         plt.show()
     else:
         if ax is None:
@@ -187,13 +197,13 @@ def plot_f_and_df(x, y=None, y_func=None, use_ax=False, ax=None, just_f=False, j
                              title=label_f, x_label=x_label, y_label=y_label_f, ax=ax, font_name=font_name)
                 return ax
             if just_df:
-                ax = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=lable_df,
-                             title=lable_df, x_label=x_label, y_label=y_label_df, ax=ax, font_name=font_name)
+                ax = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=label_df,
+                             title=label_df, x_label=x_label, y_label=y_label_df, ax=ax, font_name=font_name)
                 return ax
             ax[0] = plot_xy(x.detach().numpy(), y.detach().numpy(), use_ax=True, show_plt=False, label=label_f,
                             title=label_f, x_label=x_label, y_label=y_label_f, ax=ax[0], font_name=font_name)
-            ax[1] = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=lable_df,
-                            title=lable_df, x_label=x_label, y_label=y_label_df, ax=ax[1], font_name=font_name)
+            ax[1] = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=label_df,
+                            title=label_df, x_label=x_label, y_label=y_label_df, ax=ax[1], font_name=font_name)
             return ax
 
 
