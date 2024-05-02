@@ -26,7 +26,7 @@ def count_correct_predictions(y_hat, y):
 
 def draw_Loss_or_Accuracy(y, epochs, show_interval, content='loss'):
     """
-    :param y: shape[2, epochs]
+    :param y: shape：[2, epochs]
     :param epochs: int类型的数值
     :param show_interval: 显示间隔
     :param content:

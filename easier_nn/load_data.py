@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import TensorDataset, DataLoader
+import pandas as pd
 
 
 def load_array(data_arrays, batch_size=64, if_shuffle=True):
@@ -21,6 +22,15 @@ def trainset_to_dataloader(X_train, y_train, batch_size=64, y_reshape=False):
     [easy函数] 将训练集转为DataLoader
     :return: DataLoader数据类型
     """
+    # 要注意X_train的type是DataFrame
+    if isinstance(X_train, pd.DataFrame) and isinstance(y_train, pd.DataFrame):
+        X_train = torch.tensor(X_train.values, dtype=torch.float32)
+        y_train = torch.tensor(y_train.values, dtype=torch.float32)
+    if isinstance(X_train, torch.Tensor) and isinstance(y_train, torch.Tensor):
+        pass
+    else:
+        X_train = torch.tensor(X_train, dtype=torch.float32)
+        y_train = torch.tensor(y_train, dtype=torch.float32)
     if y_reshape:
         return load_array((X_train, y_train.reshape(-1, 1)), batch_size)
     else:
@@ -31,6 +41,14 @@ def testset_to_dataloader(X_test, y_test, batch_size=64, y_reshape=False):
     [easy函数] 将测试集转为DataLoader
     :return: DataLoader数据类型
     """
+    if isinstance(X_test, pd.DataFrame) and isinstance(y_test, pd.DataFrame):
+        X_test = torch.tensor(X_test.values, dtype=torch.float32)
+        y_test = torch.tensor(y_test.values, dtype=torch.float32)
+    if isinstance(X_test, torch.Tensor) and isinstance(y_test, torch.Tensor):
+        pass
+    else:
+        X_test = torch.tensor(X_test, dtype=torch.float32)
+        y_test = torch.tensor(y_test, dtype=torch.float32)
     if y_reshape:
         return load_array((X_test, y_test.reshape(-1, 1)), batch_size, if_shuffle=False)
     else:

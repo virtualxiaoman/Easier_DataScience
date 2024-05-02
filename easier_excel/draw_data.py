@@ -9,28 +9,155 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression
 from easier_tools.Colorful_Console import ColoredText as CT
+from easier_tools.Colorful_Console import _func_warning as fw
 
-def plot_xy(x, y, axes=None, title="Title", label='label', color='blue', linestyle='-', x_label='x', y_label='y',
-            show_plt=True, save_path=None, save_name='x-y图', font_name='SimSun',
+
+def set_plot_format_(ax, **kwargs):
+    """
+    设置图的格式
+    :param ax: 传入的ax
+    :param kwargs: 传入的参数，包含参数：
+     font_name: 默认SimSun，还能取值SimHei，KaiTi，Times New Roman，Arial等
+     title: 标题
+     x_label: x轴标签
+     y_label: y轴标签
+     show_grid: plt.grid(show_grid)
+     show_legend: ax.legend()
+     x_labelsize: x轴的label的大小
+     y_labelsize: y轴的label的大小
+     x_ticksize: x轴的tick的大小
+     y_ticksize: y轴的tick的大小
+     x_rotation: x轴逆时针旋转角度
+     y_rotation: y轴逆时针旋转角度
+     xlim: x轴的范围
+     ylim: y轴的范围
+     xscale: x轴的scale
+     yscale: y轴的scale
+     set_aspect：设置纵横比，默认是'auto'，也可以是'equal'
+    :return: plt, ax
+    """
+    title = kwargs.get('title', 'Title')
+    x_label = kwargs.get('x_label', 'x')
+    y_label = kwargs.get('y_label', 'y')
+    show_grid = kwargs.get('show_grid', True)
+    show_legend = kwargs.get('show_legend', True)
+    x_labelsize = kwargs.get('x_labelsize', 12)
+    y_labelsize = kwargs.get('y_labelsize', 12)
+    x_ticksize = kwargs.get('x_ticksize', 12)
+    y_ticksize = kwargs.get('y_ticksize', 12)
+    x_rotation = kwargs.get('x_rotation', 0)
+    y_rotation = kwargs.get('y_rotation', 0)
+    x_lim = kwargs.get('x_lim', None)
+    y_lim = kwargs.get('y_lim', None)
+    x_scale = kwargs.get('x_scale', 'linear')
+    y_scale = kwargs.get('y_scale', 'linear')
+    set_aspect = kwargs.get('set_aspect', 'auto')
+
+    ax.set_title(title)
+    ax.set_xlabel(x_label, fontsize=x_labelsize)
+    ax.set_ylabel(y_label, fontsize=y_labelsize)
+    ax.tick_params(axis='x', rotation=x_rotation, labelsize=x_ticksize)
+    ax.tick_params(axis='y', rotation=y_rotation, labelsize=y_ticksize)  # 相当于plt.yticks(fontsize=y_ticksize)
+    ax.grid(show_grid)
+    ax.set_aspect(set_aspect)
+
+    if show_legend:
+        if ax.get_legend() is not None:
+            ax.legend()
+
+    if x_lim is not None and len(x_lim) == 2:
+        ax.set_xlim(x_lim)
+    if y_lim is not None and len(y_lim) == 2:
+        ax.set_ylim(y_lim)
+    if x_scale is not None:
+        ax.set_xscale(x_scale)
+    if y_scale is not None:
+        ax.set_yscale(y_scale)
+
+    return ax
+
+
+def plot_LR_(x, y, ax, LR_color, LR_linestyle, LR_digits=2):
+    """
+    在原图的基础上绘制线性回归拟合直线。
+    :param x: x轴
+    :param y: y轴(原始数据点，等待拟合)
+    :param ax: ax
+    :param LR_color: 线性回归直线的颜色
+    :param LR_linestyle: 线性回归直线的形式
+    :param LR_digits: 线性回归直线的系数保留的小数位数
+    :return: 绘制了线性回归拟合直线的ax
+    """
+    lin_reg = LinearRegression()
+    lin_reg.fit(np.array(x).reshape(-1, 1), np.array(y))
+    x_LR = np.linspace(min(x), max(x), 100).reshape(-1, 1)  # 生成预测用的 x 值
+    y_LR = lin_reg.predict(x_LR)  # 生成拟合直线的预测值
+    ax.plot(x_LR, y_LR, color=LR_color, linestyle=LR_linestyle,
+            label=f'y={lin_reg.coef_[0]:.{LR_digits}f}x+{lin_reg.intercept_:.{LR_digits}f}')
+    return ax
+
+
+def _save_plot(plt=None, save_path=None, save_name=None, save_dpi=300, save_format='png'):
+    """
+    保存图片，默认存为png格式，保存到save_path路径下的save_name.png
+    :param plt: plt
+    :param save_path: 保存路径
+    :param save_name: 保存名称
+    :param save_dpi: 保存的dpi
+    :param save_format: 保存的格式，有png,jpg,svg
+    :return:
+    """
+    if plt is None:
+        raise ValueError("plt不能为None")
+    supported_formats = ['png', 'svg', 'jpg']  # 可支持的文件格式
+    if save_format not in supported_formats:
+        fw(_save_plot, warning_text=f"不支持的保存格式'{save_format}'，支持的格式有：{', '.join(supported_formats)}。\n"
+                                    f"这里自动更改为'.png'，如有需要，请自行更改为正确的格式",
+           modify_tip="请检查格式是否正确")
+        save_format = 'png'
+    if save_name is None or save_name == "":
+        fw(_save_plot, warning_text='保存的名字不能为空，这里使用默认的名称"未命名"。，如有需要，请自行更改为正确的名称',
+           modify_tip="请检查是否正确填写了参数save_name")
+        save_name = "未命名"
+    if isinstance(save_path, str) and isinstance(save_name, str):
+        if not os.path.exists(save_path):
+            fw(_save_plot, warning_text=f'路径"{save_path}"不存在，已经为你创建', modify_tip="请检查路径是否正确")
+            os.makedirs(save_path)
+        # 必须先保存再plt.show()，不然show会释放缓冲区里的图像
+        plt.savefig(os.path.join(save_path, f"{save_name}.{save_format}"), dpi=save_dpi)  # dpi为了调节清晰度
+    else:
+        ValueError("save_path和save_name必须是字符串")
+
+
+def plot_xy(x, y, title="Title", label='label', color='blue', linestyle='-', x_label='x', y_label='y',
+            show_plt=True, save_path=None, save_name='x-y图', save_dpi=300, font_name='SimSun',
             show_grid=True, show_legend=True,
-            x_labelsize=12, y_labelsize=12, x_ticksize=12, y_ticksize=12, x_rotation=0,
-            xscale_log=False, yscale_log=False, alpha=1, adjust_params=None,
-            use_LR=False, LR_color="green", LR_linestyle='--', use_ax=False, ax=None):
+            x_labelsize=12, y_labelsize=12, x_ticksize=12, y_ticksize=12, x_rotation=0, y_rotation=0,
+            x_lim=None, y_lim=None, x_scale='linear', y_scale='linear',
+            alpha=1, adjust_params=None,
+            use_LR=False, LR_color="green", LR_linestyle='--', LR_digits=2,
+            use_ax=False, ax=None):
     """
     绘制曲线图
+    [使用示例]:
     使用ax的示例1（绘制多个子图）：
         fig, axs = plt.subplots(1, 2, figsize=(12, 6))
-        axs[0] = xm_dd.plot_xy(x, y1, label='$\sin$', color='blue', title='$f(x) = \sin(x)$', ax=axs[0], use_ax=True, show_plt=False)
-        axs[1] = xm_dd.plot_xy(x, y2, label='$\cos$', color='green', title='$f(x) = \cos(x)$', ax=axs[1], use_ax=True, show_plt=False)
+        axs[0] = plot_xy(x, y1, label='$\sin$', color='blue', title='$f(x) = \sin(x)$', ax=axs[0], use_ax=True, show_plt=False)
+        axs[1] = plot_xy(x, y2, label='$\cos$', color='green', title='$f(x) = \cos(x)$', ax=axs[1], use_ax=True, show_plt=False)
         plt.show()
     使用ax的示例2（绘制在同一幅图上）：
         fig, ax = plt.subplots(figsize=(10, 6))
-        axs[0] = xm_dd.plot_xy(x, y1, label='Sin', color='blue', ax=ax, use_ax=True, show_plt=False)
-        axs[1] = xm_dd.plot_xy(x, y2, label='Cos', color='green', ax=ax, use_ax=True, show_plt=False)
+        axs[0] = plot_xy(x, y1, label='Sin', color='blue', ax=ax, use_ax=True, show_plt=False)
+        axs[1] = plot_xy(x, y2, label='Cos', color='green', ax=ax, use_ax=True, show_plt=False)
         plt.show()
+    [注意事项]:
+        为了便于操作，使用的是plt.rcParams['font.sans-serif'] = [font_name]，会导致全局的字体都变成这个字体。也就是如果绘制了
+    多幅子图，前面的子图的字体会被新子图的字体覆盖。解决方法是单独设置，比如：
+    axs[0].set_title('把标题换个字体', fontsize=14, fontname='SimSun')
+    这样能够单独设置某个字体。
+
     :param x: x轴数据点
     :param y: y轴数据点
-    :param axes: 坐标轴范围，比如(-1, 5, -1, 5)
     :param title: 标题
     :param label: 标签
     :param color: 线条颜色 默认blue。可选['blue', 'green', 'red', 'black', 'purple', 'pink', 'orange', 'cyan']
@@ -40,6 +167,7 @@ def plot_xy(x, y, axes=None, title="Title", label='label', color='blue', linesty
     :param show_plt: 是否显示
     :param save_path: 保存路径
     :param save_name: 保存的名字
+    :param save_dpi: 保存的dpi
     :param font_name: 默认SimSun，还能取值SimHei，KaiTi，Times New Roman，Arial等
     :param show_grid: plt.grid(show_grid)
     :param show_legend: ax.legend()
@@ -48,62 +176,51 @@ def plot_xy(x, y, axes=None, title="Title", label='label', color='blue', linesty
     :param x_ticksize: x轴的tick的大小
     :param y_ticksize: y轴的tick的大小
     :param x_rotation: x轴逆时针旋转角度
-    :param xscale_log: x轴是否使用log
-    :param yscale_log: y轴是否使用log
+    :param y_rotation: y轴逆时针旋转角度
+    :param x_lim: x轴的范围，比如(-1, 5)
+    :param y_lim: y轴的范围，比如(-1, 5)
+    :param x_scale: {"linear线性", "log对数", "symlog包含正负的对数", "logit使用逻辑回归", ...}或ScaleBase对象
+    :param y_scale: 同xscale
     :param alpha: 透明度
     :param adjust_params: 用于传入plt.subplots_adjust()，比如
             adjust_params = {'top': 0.93, 'bottom': 0.15, 'left': 0.09, 'right': 0.97, 'hspace': 0.2, 'wspace': 0.2}
     :param use_LR: 是否使用LinearRegression来拟合数据并绘制
     :param LR_color： 线性回归拟合直线的颜色，默认green
     :param LR_linestyle: 线性回归的线条样式 默认--
+    :param LR_digits: 线性回归的系数保留的小数位数
     :param use_ax: 是否是使用ax，如果是就直接返回ax，然后在调用此函数的地方绘制
     :param ax: 在use_ax的情况下应该传入的参数
     :return ax: 如果use_ax=True的话
     """
     if ax is not None:
         if not use_ax:
-            print(CT("Warning in func").red(), CT("plot_xy").yellow(),
-                  CT(": 在没有use_ax的情况下，是不会返回ax的，建议使用:").red(), CT("use_ax=True").pink())
+            fw(func=plot_xy, warning_text="在没有use_ax的情况下，是不会返回ax的", modify_tip="使用use_ax=True")
     if ax is None:
         if use_ax:
-            print(CT("Warning in func").red(), CT("plot_xy").yellow(),
-                  CT(": 在use_ax的情况下，最好是主动传入ax，这种情况下是默认使用函数内的ax").red())
+            fw(func=plot_xy, warning_text="在use_ax的情况下，最好是主动传入ax，这种情况下是默认使用函数内的ax",
+               modify_tip="传入自己的ax")
         _, ax = plt.subplots()
+    # 绘图
     plt.rcParams['font.sans-serif'] = [font_name]
     plt.rcParams['axes.unicode_minus'] = False  # 为了显示负号
-    # 设置透明度alpha
+
     ax.plot(x, y, label=label, color=color, linestyle=linestyle, alpha=alpha)
     if use_LR:
-        lin_reg = LinearRegression()
-        lin_reg.fit(np.array(x).reshape(-1, 1), np.array(y))
-        x_LR = np.linspace(min(x), max(x), 100).reshape(-1, 1)  # 生成预测用的 x 值
-        y_LR = lin_reg.predict(x_LR)  # 生成拟合直线的预测值
-        ax.plot(x_LR, y_LR, color=LR_color, linestyle=LR_linestyle,
-                label='y={:.2f}x+{:.2f}'.format(lin_reg.coef_[0], lin_reg.intercept_))
-    ax.set_title(title)
-    ax.set_xlabel(x_label, fontsize=x_labelsize)
-    ax.set_ylabel(y_label, fontsize=y_labelsize)
-    ax.tick_params(axis='x', rotation=x_rotation, labelsize=x_ticksize)
-    ax.tick_params(axis='y', labelsize=y_ticksize)  # 相当于plt.yticks(fontsize=y_ticksize)
-    ax.grid(show_grid)
-    if show_legend:
-        ax.legend()
-    if axes is not None:
-        ax.set_xlim((axes[0], axes[1]))
-        ax.set_ylim((axes[2], axes[3]))
-    if xscale_log:
-        ax.set_xscale('log')
-    if yscale_log:
-        ax.set_yscale('log')
+        plot_LR_(x=x, y=y, ax=ax, LR_color=LR_color, LR_linestyle=LR_linestyle, LR_digits=LR_digits)
+    ax = set_plot_format_(ax=ax, font_name=font_name, title=title, x_label=x_label, y_label=y_label,
+                          show_grid=show_grid, show_legend=show_legend,
+                          x_labelsize=x_labelsize, y_labelsize=y_labelsize, x_ticksize=x_ticksize,
+                          y_ticksize=y_ticksize,
+                          x_rotation=x_rotation, y_rotation=y_rotation,
+                          x_lim=x_lim, y_lim=y_lim, x_scale=x_scale, y_scale=y_scale,
+                          adjust_params=adjust_params)
     if adjust_params is None:
         plt.tight_layout()
     else:
         plt.subplots_adjust(**adjust_params)
-    if isinstance(save_path, str):
-        if not os.path.exists(save_path):
-            os.makedirs(save_path)
-        # 必须先保存再plt.show()，不然show会释放缓冲区里的图像
-        plt.savefig(os.path.join(save_path, f"{save_name}.png"), dpi=300)  # dpi为了调节清晰度
+    # 保存/显示
+    if isinstance(save_path, str) and isinstance(save_name, str):
+        _save_plot(plt, save_path, save_name, save_dpi)
     if use_ax:
         return ax
     if show_plt:
@@ -113,7 +230,7 @@ def plot_xy(x, y, axes=None, title="Title", label='label', color='blue', linesty
 
 def plot_xys(x, y_list, labels=None, colors=None, linestyles=None, alpha=1, axes=None):
     """
-    在同一幅图上绘制多个y
+    在同一幅图上绘制多个y。另外，使用plot_xy更便于自定义，plot_xys只是一个简化版。
     暂不支持9个及以上的y直接作为输入，除非自行传入colors, linestyles以与y匹配
     使用示例：
         xm_dd.plot_xys(x, [y1, y2, y3], labels=['Sin', 'Cos', 'Tan'], colors=['blue', 'green', 'red'], axes=(-5, 5, -5, 5))
@@ -159,7 +276,7 @@ def plot_xys(x, y_list, labels=None, colors=None, linestyles=None, alpha=1, axes
 
 def plot_f_and_df(x, y=None, y_func=None, use_ax=False, ax=None, just_f=False, just_df=False, font_name='Times New Roman',
                   x_label=r'$x$', y_label_f=r'$f(x)$', y_label_df=r'$\frac{df}{dx}$', label_f=r'$f(x)$',
-                  label_df=r'$\frac{df}{dx}$', save_name=None):
+                  label_df=r'$\frac{df}{dx}$', save_path=None, save_name=None):
     """
     绘制f与其导函数。
     use_ax=False的示例：
@@ -181,7 +298,8 @@ def plot_f_and_df(x, y=None, y_func=None, use_ax=False, ax=None, just_f=False, j
     :param y_label_df: df(x)的y轴标签
     :param label_f: f(x)的label
     :param label_df: df(x)的label
-    :param save_name: 保存的地址与名字
+    :param save_path: 保存的路径
+    :param save_name: 保存的名字
     :return: ax(如果use_ax的话)
     """
     if y is None:
@@ -196,11 +314,8 @@ def plot_f_and_df(x, y=None, y_func=None, use_ax=False, ax=None, just_f=False, j
                          title=label_f, ax=axs[0], x_label=x_label, y_label=y_label_f, font_name=font_name)
         axs[1] = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=label_df,
                          title=label_df, ax=axs[1], x_label=x_label, y_label=y_label_df, font_name=font_name)
-        if isinstance(save_name, str):
-            if not os.path.exists(save_name):
-                os.makedirs(save_name)
-            # 必须先保存再plt.show()，不然show会释放缓冲区里的图像
-            plt.savefig(os.path.join(save_name), dpi=300)  # dpi为了调节清晰度
+        if isinstance(save_path, str) and isinstance(save_name, str):
+            _save_plot(plt, save_path, save_name, save_dpi=300)
         plt.show()
     else:
         if ax is None:
@@ -221,6 +336,64 @@ def plot_f_and_df(x, y=None, y_func=None, use_ax=False, ax=None, just_f=False, j
                             title=label_df, x_label=x_label, y_label=y_label_df, ax=ax[1], font_name=font_name)
             return ax
 
+
+def draw_density(x, ax=None, show_plt=True, **kwargs):
+    """
+    绘制密度图
+    :param x: 传入的数据
+    :param ax: 传入的ax
+    :param show_plt: 是否plt.show()
+    :return: None
+    """
+    kwargs.setdefault('title', 'Probability Density')
+    kwargs.setdefault('x_label', 'Value')
+    kwargs.setdefault('y_label', 'Density')
+    if ax is None:
+        ax = plt.gca()
+    sns.kdeplot(x, fill=True, ax=ax, common_norm=False, linewidth=1, palette="viridis")
+    ax = set_plot_format_(ax=ax, **kwargs)
+    if show_plt:
+        plt.show()
+        plt.close()
+    return ax
+
+
+def draw_scatter(x, y, ax=None, show_plt=True,
+                 if_colorful=False, c=None, cmap='viridis', norm=None,
+                 **kwargs):
+    """
+    绘制散点图
+    [使用方法]:
+        theta = np.linspace(0, 2 * np.pi, 100)
+        r = 1  # 半径
+        x = r * np.cos(theta)
+        y = r * np.sin(theta)
+        c = np.arange(len(x))
+        draw_scatter(x, y, show_plt=True, if_colorful=True, c=c, norm=None, set_aspect='equal')
+    :param x: 传入的x数据
+    :param y: 传入的y数据
+    :param ax: 传入的ax
+    :param show_plt: 是否plt.show()
+    :param if_colorful: 是否着色
+    :param c: 颜色，可以指定为y，或者其他形式
+    :param cmap: 颜色映射，可选值有：'viridis', 'RdYlBu', 'coolwarm', 'spring', 'summer', 'autumn', 'winter' 等
+    :param norm: 归一化，比如norm=plt.Normalize(y.min(), y.max())
+    :return: None
+    """
+    kwargs.setdefault('title', 'Scatter')
+    kwargs.setdefault('x_label', 'x')
+    kwargs.setdefault('y_label', 'y')
+    if ax is None:
+        ax = plt.gca()
+    if if_colorful:
+        ax.scatter(x, y, c=c, cmap=cmap, norm=norm)
+    else:
+        ax.scatter(x, y)
+    ax = set_plot_format_(ax=ax, **kwargs)
+    if show_plt:
+        plt.show()
+        plt.close()
+    return ax
 
 class draw_df:
     def __init__(self, df):
@@ -441,7 +614,7 @@ class draw_df:
         绘制概率密度图
         :param feature_name: 要绘制密度的属性名称
         :param target_name: 目标(分类、预测...)的属性名称
-        :param use_mean: 是否使用target的均值
+        :param use_mean: 对于连续值的分类密度绘制，是否使用target的均值
         :param show_plt: plt.show()
         :param save_path: 图片保存的地址
         :param classify: 绘制密度图的时候是否将各个类别区分开来

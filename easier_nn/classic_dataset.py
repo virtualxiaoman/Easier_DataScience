@@ -112,15 +112,24 @@ def load_time_machine(path='data/timemachine.txt', raw=True, show_details=False)
 
 
 class VirtualDataset:
-    def __init__(self, start=1, end=100, num_points=1000):
+    def __init__(self, start=1, end=100, num_points=None):
         self.start = start
         self.end = end
-        self.num_points = num_points
+        if isinstance(num_points, int):
+            self.num_points = num_points
+        else:
+            self.num_points = (end - start + 1) * 10  # 相当于间隔是0.1
         self.x = torch.linspace(self.start, self.end, self.num_points)
         self.y = None
 
     def sinx(self, w=0.01, noise_mu=0, noise_sigma=0.2, show_plt=False):
         noise = torch.normal(noise_mu, noise_sigma, (self.num_points,))
         self.y = torch.sin(w*self.x) + noise
+        if show_plt:
+            plot_xy(self.x.numpy(), self.y.numpy())
+
+    def kx(self, k=1, noise_mu=0, noise_sigma=0.2, show_plt=False):
+        noise = torch.normal(noise_mu, noise_sigma, (self.num_points,))
+        self.y = k * self.x + noise
         if show_plt:
             plot_xy(self.x.numpy(), self.y.numpy())

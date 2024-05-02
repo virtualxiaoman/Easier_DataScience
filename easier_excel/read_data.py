@@ -1,5 +1,7 @@
 import pandas as pd
-
+import seaborn as sns
+import matplotlib.pyplot as plt
+import cv2
 
 def set_pd_option(max_show=True, float_type=True, decimal_places=2, reset_all=False, reset_display=False):
     """
@@ -146,8 +148,51 @@ class desc_df:
         # 下面这一行是为了更新self.missing_info，便于在外部调用fill_missing_values后能直接查看修改后的self.missing_info的值
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
 
-
+    def draw_heatmap(self, scale=False, xticklabels=None):
+        """
+        画热力图
+        :param scale: 是否标准化
+        :param xticklabels: x轴标签，None代表使用df的columns
+        """
+        if xticklabels is None:
+            xticklabels = list(self.df.columns)
+        if scale:
+            df = self.df.copy()
+            df = (df - df.mean()) / df.std()
+            sns.heatmap(df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
+        else:
+            sns.heatmap(self.df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
+        plt.show()
+        plt.close()
 # 一些可能的读入方法以作为记录
 # df_main['index'] = range(1, df_main.shape[0] + 1)  # 但不能将index放在第一行，下面一行代码可以：
 # df_main.insert(0, 'index', range(1, df_main.shape[0] + 1))
 # print(df_main.iloc[5])  # 获取第6行
+
+
+def read_image(img_path, gray_pic=False, show_details=False):
+    """
+    读取图片
+    [使用示例]：
+        path = '../output/arona.jpg'
+        img = read_image(path, gray_pic=True, show_details=True)  # 读取为灰度图
+    :param img_path: 图像路径
+    :param gray_pic: 是否读取灰度图像
+    :param show_details: 是否输出图片的shape以及显示图片
+    :return: 图像数组，类型为np.ndarray。大小是(H, W, 3)或(H, W)
+    """
+    if gray_pic:
+        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+    else:
+        img_gbr = cv2.imread(img_path)
+        img = cv2.cvtColor(img_gbr, cv2.COLOR_BGR2RGB)
+    if show_details:
+        print(img.shape)
+        if gray_pic:
+            plt.imshow(img, cmap='gray')
+        else:
+            plt.imshow(img)
+        plt.show()
+        plt.close()
+    return img
+

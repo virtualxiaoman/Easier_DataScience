@@ -2,7 +2,7 @@ from collections import Counter
 import pandas as pd
 from easier_nlp.Colorful_Console import ColoredText as CT
 
-def listfreq_to_df(raw_list, list_name="word", show_details=False):
+def list_to_freqdf(raw_list, list_name="word", show_details=False):
     freq = Counter(raw_list)  # 对列表中的元素进行频率统计
     # 将词频统计结果转换为dataframe，单词的列的名称是list_name，词频的列的名称是count
     df = pd.DataFrame(list(freq.items()), columns=[list_name, 'count'])

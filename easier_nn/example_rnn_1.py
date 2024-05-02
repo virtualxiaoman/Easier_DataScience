@@ -1,13 +1,60 @@
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from torch import nn
 from easier_nn.classic_dataset import VirtualDataset as VD
-from easier_nn.load_data import load_array
+from easier_nn.load_data import load_array, trainset_to_dataloader
 from easier_nn.train_net import train_net
 from easier_excel.draw_data import plot_xys, plot_xy
 
-vd = VD(end=1000)
-vd.sinx(noise_sigma=0.15, show_plt=False)
+input_size = 1  # 输入数据编码的维度
+output_size = 1  # 输出数据编码的维度
+hidden_size = 50  # 隐含层维度
+num_layers = 10  # 隐含层层数
+seq_len = 600  # 句子长度
+batch_size = 60  # 批量大小
+
+
+vd = VD(end=1000, num_points=1000)
+vd.kx(k=0.0005, noise_mu=0.5, noise_sigma=0.03, show_plt=False)
+train_data = vd.y[:seq_len].reshape(-1, 1, input_size)
+train_target = vd.y[1:seq_len+1].reshape(-1, 1, output_size)
+train_iter = trainset_to_dataloader(train_data, train_target, batch_size=batch_size)
+
+
+class SimpleRNN(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(SimpleRNN, self).__init__()
+        self.rnn = nn.RNN(input_size, hidden_size, num_layers=num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x, hidden):
+        out, hidden = self.rnn(x, hidden)
+        out = self.fc(out)
+        return out
+
+net = SimpleRNN(input_size, hidden_size, output_size)
+hidden = torch.randn(num_layers, batch_size, hidden_size)
+loss = nn.MSELoss()
+optimizer = torch.optim.Adam(net.parameters(), lr=0.0001)
+# net = train_net(X_train=train_data, y_train=train_target, data_iter=train_iter, net=net,
+#                 loss=loss, optimizer=optimizer, num_epochs=300, show_interval=10, hidden=hidden)
+# torch.save(net, '../model/test/rnn_predict_net_simple_rnn.pth')
+net = torch.load('../model/test/rnn_predict_net_simple_rnn.pth')
+net.eval()
+print(net)
+test_data = vd.x[seq_len + 1:seq_len + batch_size + 1]
+test_data = test_data.reshape(-1, 1, input_size)
+print(test_data.shape)  # torch.Size([60, 1, 1])
+with torch.no_grad():
+    output = net(test_data, hidden)
+print(output.shape)  # torch.Size([60, 1, 1])
+predicted_value = np.array(output).reshape(-1)
+print("预测值:", predicted_value)
+print(predicted_value.shape)  # (60,)
+plot_xys(x=test_data.numpy().reshape(-1), y_list=[vd.y[seq_len+1:seq_len+61].detach().numpy(), predicted_value])
+
+exit("下面的是Linear网络")
 
 def get_train_iter(train_class, tau=4, batch_size=16, n_train=600):
     features = torch.zeros((train_class.num_points - tau, tau))

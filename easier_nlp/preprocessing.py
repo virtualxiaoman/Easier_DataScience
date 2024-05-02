@@ -1,3 +1,4 @@
+import collections
 import re
 from collections import Counter
 import jieba
@@ -22,9 +23,12 @@ from bokeh.plotting import figure, show
 from bokeh.models import HoverTool
 import gensim
 from gensim import corpora, models, similarities
+import torch
+import random
 
 from easier_nlp.Colorful_Console import ColoredText as CT
-from easier_tools.easy_count import listfreq_to_df
+from easier_tools.easy_count import list_to_freqdf
+from easier_nn.classic_dataset import load_time_machine
 
 # nltk.download()
 
@@ -136,7 +140,7 @@ class enText:
             self.process()
         self.t = Text(self.tokens)  # 生成Text对象
 
-        self.tc_df = listfreq_to_df(self.tokens, list_name="word", show_details=False)  # 词频统计
+        self.tc_df = list_to_freqdf(self.tokens, list_name="word", show_details=False)  # 词频统计
 
         # 词性标注
         self.pos_tag = pos_tag(self.tokens)
@@ -308,6 +312,133 @@ class zhText:
         plt.close()
 
 
+def seq_data_iter_sequential(corpus, batch_size, num_steps):
+    """
+    使用顺序分区生成一个小批量子序列X,Y。
+    返回的num_batches个X的shape都是(batch_size, num_steps)
+    [使用方法]:
+        data_iter = seq_data_iter_sequential(corpus=list(range(1000)), batch_size=32, num_steps=10)
+        for X, Y in data_iter:
+            print("Input sequence (X):", X)  # 输入序列
+            print("Output sequence (Y):", Y)  # 输出序列
+            # break
+    :param corpus: list: 语料库
+    :param batch_size: int: 批量大小(返回的X,Y的shape[0])
+    :param num_steps: int: 每个迭代样本的长度(返回的X,Y的shape[1])
+    """
+    offset = random.randint(0, num_steps - 1)  # 偏移量是随机的，但小于一个批量num_step的大小，也就是[0, num_steps-1]
+    num_tokens = ((len(corpus) - offset - 1) // batch_size) * batch_size  # 保证num_tokens能整出batch_size。因为标签Y是X的后一个元素，所以要减1
+    Xs = torch.tensor(corpus[offset: offset + num_tokens])  # 从偏移量开始，取num_tokens个元素
+    Ys = torch.tensor(corpus[offset + 1: offset + 1 + num_tokens])  # 从偏移量+1开始，取num_tokens个元素
+    Xs, Ys = Xs.reshape(batch_size, -1), Ys.reshape(batch_size, -1)  # Xs和Ys的形状都是(batch_size, num_tokens/batch_size)
+    num_batches = Xs.shape[1] // num_steps  # 每个小批量的样本数，即序列长度，等于num_tokens//batch_size//num_steps
+    for i in range(0, num_steps * num_batches, num_steps):
+        X = Xs[:, i: i + num_steps]
+        Y = Ys[:, i: i + num_steps]
+        yield X, Y
+
+def seq_data_iter_random(corpus, batch_size, num_steps):
+    """使用随机抽样生成一个小批量子序列。与seq_data_iter_sequential的区别是，这里的子序列不一定连续。"""
+    offset = random.randint(0, num_steps - 1)
+    corpus = corpus[offset:]  # corpus从偏移量开始
+    num_subseqs = (len(corpus) - 1) // num_steps  # 减1是因为标签Y是X的后一个元素
+    initial_indices = list(range(0, num_subseqs * num_steps, num_steps))  # 长度为num_steps的子序列的起始索引
+    random.shuffle(initial_indices)
+    num_batches = num_subseqs // batch_size
+    for i in range(0, batch_size * num_batches, batch_size):
+        # 在这里，initial_indices包含子序列的随机起始索引
+        initial_indices_per_batch = initial_indices[i: i + batch_size]
+        X = [corpus[j: j + num_steps] for j in initial_indices_per_batch]
+        Y = [corpus[j: j + num_steps] for j in initial_indices_per_batch]
+        yield torch.tensor(X), torch.tensor(Y)
+
+class Vocab:
+    """文本词表"""
+    def __init__(self, tokens=None, min_freq=0, reserved_tokens=None):
+        if tokens is None:
+            tokens = []
+        if reserved_tokens is None:
+            reserved_tokens = []
+        # 按出现频率排序
+        counter = count_corpus(tokens)
+        self._token_freqs = sorted(counter.items(), key=lambda x: x[1], reverse=True)
+        # 未知词元的索引为0
+        self.idx_to_token = ['<unk>'] + reserved_tokens
+        self.token_to_idx = {token: idx for idx, token in enumerate(self.idx_to_token)}
+        for token, freq in self._token_freqs:
+            if freq < min_freq:
+                break
+            if token not in self.token_to_idx:
+                self.idx_to_token.append(token)
+                self.token_to_idx[token] = len(self.idx_to_token) - 1
+
+    def __len__(self):
+        return len(self.idx_to_token)
+
+    def __getitem__(self, tokens):
+        if not isinstance(tokens, (list, tuple)):
+            return self.token_to_idx.get(tokens, self.unk)
+        return [self.__getitem__(token) for token in tokens]
+
+    def to_tokens(self, indices):
+        if not isinstance(indices, (list, tuple)):
+            return self.idx_to_token[indices]
+        return [self.idx_to_token[index] for index in indices]
+
+    @property
+    def unk(self):  # 未知词元的索引为0
+        return 0
+
+    @property
+    def token_freqs(self):
+        return self._token_freqs
+
+def count_corpus(tokens):
+    """统计词元的频率"""
+    # 这里的tokens是1D列表或2D列表
+    if len(tokens) == 0 or isinstance(tokens[0], list):
+        # 将词元列表展平成一个列表
+        tokens = [token for line in tokens for token in line]
+    return collections.Counter(tokens)
+
+def tokenize(lines, token='word'):
+    """将文本行拆分为单词或字符词元"""
+    if token == 'word':
+        return [line.split() for line in lines]  # 按空格进行分词
+    elif token == 'char':
+        return [list(line) for line in lines]  # 按字符进行分词
+    else:
+        print('错误：未知词元类型：' + token)
+
+def load_corpus_time_machine(max_tokens=-1):
+    """返回时光机器数据集的词元索引列表和词表"""
+    lines = load_time_machine(raw=False)
+    tokens = tokenize(lines, 'char')
+    vocab = Vocab(tokens)
+    # 因为时光机器数据集中的每个文本行不一定是一个句子或一个段落，
+    # 所以将所有文本行展平到一个列表中
+    corpus = [vocab[token] for line in tokens for token in line]
+    if max_tokens > 0:
+        corpus = corpus[:max_tokens]
+    return corpus, vocab
+
+def load_data_time_machine(batch_size, num_steps, use_random_iter=False, max_tokens=10000):
+    """返回时光机器数据集的迭代器和词表"""
+    data_iter = SeqDataLoader(batch_size, num_steps, use_random_iter, max_tokens)
+    return data_iter, data_iter.vocab
+
+class SeqDataLoader:
+    """加载序列数据的迭代器"""
+    def __init__(self, batch_size, num_steps, use_random_iter, max_tokens):
+        if use_random_iter:
+            self.data_iter_fn = seq_data_iter_random
+        else:
+            self.data_iter_fn = seq_data_iter_sequential
+            self.corpus, self.vocab = load_corpus_time_machine(max_tokens)
+            self.batch_size, self.num_steps = batch_size, num_steps
+
+    def __iter__(self):
+        return self.data_iter_fn(self.corpus, self.batch_size, self.num_steps)
 
 
 

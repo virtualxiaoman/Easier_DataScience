@@ -1,19 +1,21 @@
 import inspect
 from easier_tools.Colorful_Console import ColoredText as CT
 
-def print_variables_class(obj):
+def print_variables_class(obj, specific_param=None):
     """
     输出对象的所有属性和属性值
     [使用方法]:
-        from easier_tools.print_variables import print_variables as pvc
-        pvc(你的对象)
+        from easier_tools.print_variables import print_variables_class as pvc
+        pvc(你的对象, specific_param=["属性1",...])
     :param obj: 任意对象
+    :param specific_param: 指定的属性名
     """
     print(CT("类" + str(obj.__class__) + "的参数如下：").pink())
     for attr in dir(obj):
         if not callable(getattr(obj, attr)) and not attr.startswith("__"):
-            value = getattr(obj, attr)
-            print(f"{CT(attr).pink()}: {value}")
+            if specific_param is None or attr in specific_param:
+                value = getattr(obj, attr)
+                print(f"{CT(attr).pink()}: {value}")
 
 
 def print_variables_function(func, *args, **kwargs):

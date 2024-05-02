@@ -7,8 +7,9 @@ from easier_nn.load_data import load_array
 from easier_nn.evaluate_net import evaluate_accuracy, count_correct_predictions, draw_Loss_or_Accuracy, \
     draw_Loss_or_Accuracy_immediately
 
+
 def train_net(X_train, y_train, data_iter=None, net=None, loss=None, optimizer=None, lr=0.001, num_epochs=1000,
-              batch_size=64, show_interval=10):
+              batch_size=64, show_interval=10, hidden=None):
     if isinstance(X_train, pd.DataFrame) and isinstance(y_train, pd.DataFrame):
         X_train = torch.tensor(X_train.values, dtype=torch.float32)
         y_train = torch.tensor(y_train.values, dtype=torch.float32)
@@ -22,19 +23,36 @@ def train_net(X_train, y_train, data_iter=None, net=None, loss=None, optimizer=N
     if optimizer is None:
         optimizer = torch.optim.SGD(net.parameters(), lr=lr)
 
-    for epoch in range(num_epochs):
-        for X, y in data_iter:
-            y_hat = net(X)  # 输入的X经过net所计算出的值
-            loss_value = loss(y_hat, y)
-            optimizer.zero_grad()  # 清除上一次的梯度值
-            loss_value.sum().backward()  # 反向传播，求参数的梯度
-            # for param in net.parameters():
-            #     print(param.grad)
-            optimizer.step()  # 步进 根据指定的优化算法进行参数的寻优
+    if hidden is None:
+        for epoch in range(num_epochs):
+            for X, y in data_iter:
+                y_hat = net(X)  # 输入的X经过net所计算出的值
+                loss_value = loss(y_hat, y)
+                optimizer.zero_grad()  # 清除上一次的梯度值
+                loss_value.sum().backward()  # 反向传播，求参数的梯度
+                # for param in net.parameters():
+                #     print(param.grad)
+                optimizer.step()  # 步进 根据指定的优化算法进行参数的寻优
+            if epoch % show_interval == 0:
+                loss_value = loss(net(X_train), y_train)
+                print(f'epoch {epoch + 1}, loss {loss_value.sum():f}')
+    else:
+        for epoch in range(num_epochs):
+            loss_value_sum = 0
+            for X, y in data_iter:
+                # print(X.shape, y.shape, hidden.shape)  # torch.Size([60, 1, 1]) torch.Size([60, 1, 1]) torch.Size([10, 60, 20])
+                y_hat = net(X, hidden)  # 输入的X和隐藏层(h)经过net所计算出的值
+                loss_value = loss(y_hat, y)
+                optimizer.zero_grad()  # 清除上一次的梯度值
+                loss_value.sum().backward()  # 反向传播，求参数的梯度
+                # for param in net.parameters():
+                #     print(param.grad)
+                optimizer.step()  # 步进 根据指定的优化算法进行参数的寻优
+                loss_value_sum += loss_value.sum()
 
-        if epoch % show_interval == 0:
-            loss_value = loss(net(X_train), y_train)
-            print(f'epoch {epoch + 1}, loss {loss_value.sum():f}')
+            if epoch % show_interval == 0:
+                # loss_value = loss(net(X_train), y_train)
+                print(f'epoch {epoch + 1}, loss {loss_value_sum:f}')
 
     return net
 
