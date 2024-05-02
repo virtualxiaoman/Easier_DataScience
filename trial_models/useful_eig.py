@@ -149,7 +149,7 @@ T = np.dot(T, T.T)  # 只是为了输出的是实数
 eig_vals, eig_vecs = np.linalg.eig(T)
 print('特征值：', eig_vals)
 print('特征向量：', eig_vecs)
-# 将特征值按照从大到小排序，同时也将特征向量按照特征值的顺序排序
+# 将特征值按照从大到小排序，同时也将特征向量按照特征值的顺序排序。可以发现特征值只有少部分很大，大部分都很小
 idx = np.argsort(-eig_vals)
 eig_vals = eig_vals[idx]
 eig_vecs = eig_vecs[:, idx]

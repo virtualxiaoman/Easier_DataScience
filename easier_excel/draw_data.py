@@ -233,7 +233,7 @@ def plot_xys(x, y_list, labels=None, colors=None, linestyles=None, alpha=1, axes
     在同一幅图上绘制多个y。另外，使用plot_xy更便于自定义，plot_xys只是一个简化版。
     暂不支持9个及以上的y直接作为输入，除非自行传入colors, linestyles以与y匹配
     使用示例：
-        xm_dd.plot_xys(x, [y1, y2, y3], labels=['Sin', 'Cos', 'Tan'], colors=['blue', 'green', 'red'], axes=(-5, 5, -5, 5))
+        plot_xys(x, [y1, y2, y3], labels=['Sin', 'Cos', 'Tan'], colors=['blue', 'green', 'red'], axes=(-5, 5, -5, 5))
     :param x: x轴
     :param y_list: 若干个y
     :param labels: y的标签
