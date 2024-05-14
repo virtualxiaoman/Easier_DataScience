@@ -18,7 +18,6 @@ def set_pd_option(max_show=True, float_type=True, decimal_places=2, reset_all=Fa
     :param reset_all:
     :param reset_display:
     """
-
     if max_show:
         pd.set_option('display.max_columns', None)  # 显示所有列
         pd.set_option('display.expand_frame_repr', False)  # 不允许水平拓展

@@ -1,13 +1,18 @@
 import matplotlib.pyplot as plt
-import pandas as pd
 import seaborn as sns
 import numpy as np
+import joypy
 import os
 
 import torch
+
+import pandas as pd
+from pandas.plotting import parallel_coordinates
+
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression
+
 from easier_tools.Colorful_Console import ColoredText as CT
 from easier_tools.Colorful_Console import _func_warning as fw
 
@@ -395,6 +400,34 @@ def draw_scatter(x, y, ax=None, show_plt=True,
         plt.close()
     return ax
 
+def pair_feature_plot(df, kde_hist=True, diag=None, kind=None):  # todo 要在draw_df里也加上这个函数
+    """
+    绘制特征对的散点图
+    [使用示例]:
+        pair_feature_plot(df, kde_hist=False, diag='hist', kind='reg')
+    :param df: 数据集
+    :param kde_hist: 是否这样绘制: upper:scatter, lower:kde, diag:hist
+    :param diag: [kde_hist=False时有效]对角线的图形类型，可取值为'auto', 'hist', 'kde', None
+    :param kind: [kde_hist=False时有效]非对角线的图形类型， 可取值为'scatter', 'kde', 'hist', 'reg'
+    :return:
+    """
+    sns.set(style="ticks")  # 设置风格为ticks，坐标轴上有刻度
+    if kde_hist:
+        if diag is not None or kind is not None:
+            fw(warning_text='kde_hist=True时，diag和kind参数无效', func=pair_feature_plot, modify_tip='修改为kde_hist=False')
+        # 设置右上角和左下角的对角线为散点图和概率密度曲面图
+        g = sns.PairGrid(df)
+        g.map_upper(sns.scatterplot)
+        g.map_lower(sns.kdeplot, cmap="Blues_d")
+        g.map_diag(sns.histplot, kde_kws={'color': 'k'})
+    else:
+        sns.pairplot(df, diag_kind=diag, kind=kind)  # 对角线为直方图/概率密度曲线，非对角线为散点图
+
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+
+
 class draw_df:
     def __init__(self, df):
         """
@@ -697,6 +730,19 @@ class draw_df:
         plt.close()
 
 
+if __name__ == '__main__':
+    pass
+    # todo 将山脊图、PCP合并到draw_df里，然后删除下面的代码。另外可以试着重构draw_df里的函数，分为描述性绘图和计算型绘图
+    # df, y = load_iris_df()
+    # df['species'] = y
+    # joypy.joyplot(df, ylim='own', by='species', figsize=(8, 6), alpha=0.6, color=['r', 'g', 'b', 'y'])
+    # # joypy.joyplot(df, ylim='own')
+    # plt.show()
+    # plt.close()
+    # # 绘制平行坐标图 (Parallel Coordinate Plot, PCP)
+    # parallel_coordinates(df, 'species', color=['r', 'g', 'b', 'y'])
+    # plt.show()
+    # plt.close()
 
 
 

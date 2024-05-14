@@ -23,7 +23,7 @@ def zip_image_by_svd(origin_image, rate=0.8, channel=3, show_img=True):
         # 计算达到保留率需要的奇异值数量
         total_Sigma = np.sum(Sigma)
         cum_Sigma = np.cumsum(Sigma)
-        n_sigmas = np.argmax(cum_Sigma >= rate * total_Sigma) + 1
+        n_sigmas = np.argmax(cum_Sigma >= rate * total_Sigma) + 1  # 算出需要保留的奇异值数量
         Sigma_n = np.diag(Sigma[:n_sigmas])
         zip_img[:, :, chan] = np.dot(U[:, :n_sigmas], np.dot(Sigma_n, VT[:n_sigmas, :]))
         # 记录每个矩阵的shape
@@ -32,10 +32,10 @@ def zip_image_by_svd(origin_image, rate=0.8, channel=3, show_img=True):
         vT_shape = VT[0:n_sigmas, :].shape
 
     # 这里暂时没想到更好的方法，应该是让zip_img更接近origin_image的值，使得颜色差异小
-    # 如果使用zip_img就是归一化到[0, 1]，但这里使用origin_image的最大最小值来进行归一化，是为了减少颜色差异
+    # 如果使用zip_img就是归一化到[0, 1]，但这里使用origin_image的最大最小值来进行归一化，是为了减少颜色差异。why？
     # 使用Z_MIN = np.min(zip_img[:, :, i])    Z_MAX = np.max(zip_img[:, :, i])
     # zip_img[:, :, i] = (O_MAX-O_MIN) * (zip_img[:, :, i] - Z_MIN) / (Z_MAX - Z_MIN) + O_MIN
-    # 可能不如只使用O_MAX和O_MIN，应该是因为Z_MIN和Z_MAX的值是离群点
+    # 可能不如只使用O_MAX和O_MIN，应该是因为Z_MIN和Z_MAX的值是异常值
     for i in range(channel):
         O_MAX = np.max(origin_image[:, :, i])
         O_MIN = np.min(origin_image[:, :, i])
@@ -56,11 +56,11 @@ def zip_image_by_svd(origin_image, rate=0.8, channel=3, show_img=True):
     print(f"压缩后的矩阵大小：{u_shape} , {s_shape} , {vT_shape}")
     print(f"压缩率为：       {zip_rate * 100:.3f}%")
     if show_img:
-        fig, axes = plt.subplots(1, 2)
+        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
         if channel == 1:
             axes[0].imshow(origin_image[:, :, 0], cmap='gray')
             axes[1].imshow(zip_img[:, :, 0], cmap='gray')
-        else:
+        else:  # 彩色图
             axes[0].imshow(origin_image)
             axes[1].imshow(zip_img)
         axes[0].set_title('Before SVD')
@@ -69,7 +69,7 @@ def zip_image_by_svd(origin_image, rate=0.8, channel=3, show_img=True):
     return zip_img
 
 
-path = '../output/WhiteAndYellow.jpg'
+path = '../input/arona.jpg'
 img_gray = read_image(path, gray_pic=False, show_details=False)
 # img_gray = img_gray.reshape((img_gray.shape[0], img_gray.shape[1], 1))
 zip_image_by_svd(img_gray, rate=0.6, channel=3)

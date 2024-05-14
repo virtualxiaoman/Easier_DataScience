@@ -1,8 +1,9 @@
-from sklearn.datasets import fetch_openml
+from sklearn.datasets import fetch_openml, load_iris
 import torch
 import torchvision
 from torchvision.datasets import FashionMNIST
 import numpy as np
+import pandas as pd
 import re
 
 from easier_nn.evaluate_net import show_images
@@ -20,7 +21,9 @@ def load_mnist(if_reshape_X=False, print_shape=False):
         X_test = X_test.float()
         train_iter = trainset_to_dataloader(X_train, y_train)
         test_iter = testset_to_dataloader(X_test, y_test)
-    :return: data, target
+    :param if_reshape_X: 是否将X转换为28*28的形状，也就是[70000, 784]转换为[70000, 28, 28]
+    :param print_shape: 是否打印数据的shape
+    :return: data, target (是PyTorch Tensor对象)
     """
     mnist = fetch_openml('MNIST_784', parser='auto')
     data = mnist['data']
@@ -109,6 +112,15 @@ def load_time_machine(path='data/timemachine.txt', raw=True, show_details=False)
         return content
     else:
         return [re.sub('[^A-Za-z]+', ' ', line).strip().lower() for line in lines]
+
+
+def load_iris_df():
+    iris = load_iris()
+    X = iris.data
+    y = iris.target
+    feature_names = iris.feature_names
+    X_df = pd.DataFrame(X, columns=feature_names)
+    return X_df, y
 
 
 class VirtualDataset:

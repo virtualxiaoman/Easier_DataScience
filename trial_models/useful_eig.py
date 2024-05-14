@@ -115,40 +115,39 @@ x = r * np.cos(theta)
 y = r * np.sin(theta)
 c = np.arange(len(x))
 
-# # 缩放
-# T_S = np.diag([1, 2])
-# show_transform(x, y, T_S, c, T_text='Scale')
-#
-# # 旋转
-# sita = 0.5 * np.pi
-# T_R = np.array([[np.cos(sita), -np.sin(sita)], [np.sin(sita), np.cos(sita)]])
-# show_transform(x, y, T_R, c, T_text='Rotate')
-#
-# # 等比缩放+旋转
-# a = 1
-# b = np.sqrt(3)
-# T_SeR = np.array([[a, -b], [b, a]])
-# show_transform(x, y, T_SeR, c, T_text='Scale(equally) and Rotate')
+# 缩放
+T_S = np.diag([1, 2])
+show_transform(x, y, T_S, c, T_text='Scale')
 
-# # 缩放+旋转
-# sita = 0.25 * np.pi
-# T_R = np.array([[np.cos(sita), -np.sin(sita)], [np.sin(sita), np.cos(sita)]])
-# T_S = np.diag([2, 1])
-# T_SR = np.dot(T_R, T_S)  # sita=0.25*np.pi时是[[sqrt(2), -sqrt(2)/2], [sqrt(2), sqrt(2)/2]]
-# show_transform(x, y, T_SR, c, T_text='Scale and Rotate')
+# 旋转
+sita = 0.5 * np.pi
+T_R = np.array([[np.cos(sita), -np.sin(sita)], [np.sin(sita), np.cos(sita)]])
+show_transform(x, y, T_R, c, T_text='Rotate')
+
+# 等比缩放+旋转
+a = 1
+b = np.sqrt(3)
+T_SeR = np.array([[a, -b], [b, a]])
+show_transform(x, y, T_SeR, c, T_text='Scale(equally) and Rotate')
+
+# 缩放+旋转
+sita = 0.25 * np.pi
+T_R = np.array([[np.cos(sita), -np.sin(sita)], [np.sin(sita), np.cos(sita)]])
+T_S = np.diag([2, 1])
+T_SR = np.dot(T_R, T_S)  # sita=0.25*np.pi时是[[sqrt(2), -sqrt(2)/2], [sqrt(2), sqrt(2)/2]]
+show_transform(x, y, T_SR, c, T_text='Scale and Rotate')
 
 
-# # 特征值分解 以对称矩阵为例
-# T_SM = np.array([[1.5, -np.sqrt(3)/2], [-np.sqrt(3)/2, 2.5]])
-# show_transform(x, y, T_SM, c, T_text='Symmetric Matrix')
-# eig_decomposition(x, y, T_SM, add_base=True, special_show=True)
+# 特征值分解可视化 以对称矩阵为例
+T_SM = np.array([[1.5, -np.sqrt(3)/2], [-np.sqrt(3)/2, 2.5]])
+show_transform(x, y, T_SM, c, T_text='Symmetric Matrix')
+eig_decomposition(x, y, T_SM, add_base=True, special_show=True)
+
 
 # 对8*8随机矩阵特征值分解
 T = np.random.rand(8, 8)
 T = np.dot(T, T.T)  # 只是为了输出的是实数
 eig_vals, eig_vecs = np.linalg.eig(T)
-print('特征值：', eig_vals)
-print('特征向量：', eig_vecs)
 # 将特征值按照从大到小排序，同时也将特征向量按照特征值的顺序排序。可以发现特征值只有少部分很大，大部分都很小
 idx = np.argsort(-eig_vals)
 eig_vals = eig_vals[idx]
