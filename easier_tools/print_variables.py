@@ -26,6 +26,8 @@ def print_variables_function(func, *args, **kwargs):
         pvf(函数, 0~多个传入的参数)
     [注意事项]:
         传入的是函数名，因此函数不要带括号
+    [Tips]:
+        一个星解元组*args，两个星解字典**kwargs
     :param func: 传入的函数
     :param args: Positional arguments to pass to the function.
     :param kwargs: Keyword arguments to pass to the function.

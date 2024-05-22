@@ -46,7 +46,7 @@ df = df.mask(np.random.random(df.shape) < 0.1)  # mask函数是将符合条件�
 # print(df.head())
 
 desc = read_data.desc_df(df)
-# desc.fill_missing_values(fill_type=114514)  # 实际填充的时候可别逸一时误一世了
+desc.fill_missing_values(fill_type=114514)  # 实际填充的时候可别逸一时误一世了
 desc.describe_df(show_stats=True, stats_T=False)
 
 print("----")

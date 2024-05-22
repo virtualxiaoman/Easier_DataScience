@@ -8,7 +8,7 @@ class Timer:
         timer = Timer()
           要测试时间的代码块1
         print(f'{timer.stop():.5f} sec')
-          其他代码
+          其他无关代码
         timer.start()
           要测试时间的代码块2
         print(f'{timer.stop():.5f} sec')

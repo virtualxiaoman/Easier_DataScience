@@ -2,7 +2,8 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import cv2
-from sklearn.impute import SimpleImputer
+from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
+from sklearn.ensemble import RandomForestRegressor
 
 def set_pd_option(max_show=True, float_type=True, decimal_places=2, reset_all=False, reset_display=False):
     """
@@ -161,7 +162,8 @@ class desc_df:
     def delete_missing_values(self, axis=0, how='any', inplace=True):
         """
         删除缺失值
-        [Waring]: 该操作会直接在原数据上进行修改
+        [Waring]:
+            该操作会直接在原数据上进行修改
         :param axis: 0表示删除行，1表示删除列
         :param how: any表示只要有缺失值就删除，all表示全部是缺失值才删除
         :param inplace: 是否在原数据上进行修改，不建议设置为False(设置为False时返回删除缺失值后的df)
@@ -172,7 +174,7 @@ class desc_df:
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
         return temp_df  # 返回删除缺失值后的df(这在选用inplace=False时有用)
 
-    def fill_missing_values(self, fill_type='mean'):
+    def fill_missing_values(self, fill_type='mean', **kwargs):
         """
         填充缺失值
         [Warning]:
@@ -181,14 +183,32 @@ class desc_df:
             desc = read_data.desc_df(df)
             desc.fill_missing_values(fill_type=114514)  # 实际填充的时候可别逸一时误一世了
         [Tips]:
-            目前支持的填充类型有：'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)'。
+            目前支持的填充类型有：
+            SimpleImputer: 'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)'。
+            KNNImputer: 'knn'。
+            IterativeImputer: 'rf'。
             如需删除缺失值请使用delete_missing_values。
-        :param fill_type: 填补类型，支持 'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)'
+            文档：https://scikit-learn.org/stable/modules/impute.html
+        :param fill_type: 填补类型，支持 'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)', 'knn', 'rf'
+        :param kwargs: 一些填充类型的参数。如
+            n_neighbors(fill_type='knn'时生效),
+            random_state, max_iter(fill_type='rf'时生效)
         """
+        _n_neighbors = kwargs.get('n_neighbors', 5)
+        _random_state = kwargs.get('random_state', 42)
+        _max_iter = kwargs.get('max_iter', 20)
+
         if isinstance(fill_type, (int, float)):
             imputer = SimpleImputer(strategy='constant', fill_value=fill_type)
-        else:
+        elif fill_type in ['mean', 'median', 'most_frequent']:
             imputer = SimpleImputer(strategy=fill_type)
+        elif fill_type == 'knn':
+            imputer = KNNImputer(n_neighbors=_n_neighbors)
+        elif fill_type == 'rf':
+            imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=_random_state), max_iter=_max_iter)
+        else:
+            imputer = SimpleImputer(strategy='constant', fill_value=0)  # 默认采用0填充
+
         self.df = pd.DataFrame(imputer.fit_transform(self.df), columns=self.df.columns)
         # missing_cols = self.missing_info[self.missing_info['缺失值数量'] != 0].index  # 缺失值数量不为 0 的属性
         # # print(missing_cols)
@@ -219,6 +239,14 @@ class desc_df:
             sns.heatmap(self.df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
         plt.show()
         plt.close()
+
+    def process_outlier(self):
+        """
+        处理异常值
+        [Tips]:
+            文档：https://scikit-learn.org/stable/modules/outlier_detection.html
+        """
+        pass
 
 # 一些可能的读入方法以作为记录
 # df_main['index'] = range(1, df_main.shape[0] + 1)  # 但不能将index放在第一行，下面一行代码可以：
