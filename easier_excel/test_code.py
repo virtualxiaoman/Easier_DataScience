@@ -48,3 +48,8 @@ df = df.mask(np.random.random(df.shape) < 0.1)  # mask函数是将符合条件�
 desc = read_data.desc_df(df)
 # desc.fill_missing_values(fill_type=114514)  # 实际填充的时候可别逸一时误一世了
 desc.describe_df(show_stats=True, stats_T=False)
+
+print("----")
+from easier_tools.print_variables import print_variables_function
+print_variables_function(desc.describe_df, show_stats=True, stats_T=False)
+

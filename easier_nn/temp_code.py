@@ -72,7 +72,7 @@ import torch.nn as nn
 #
 import torch
 import torch.nn as nn
-from easier_tools.print_variables import print_variables_class
+from easier_tools.print_variables import print_variables_class, print_variables_function
 from easier_nn.train_net import train_net
 
 input_size = 123  # 输入数据编码的维度
@@ -84,7 +84,7 @@ batch_size = 64  # 批量大小
 
 rnn = nn.RNN(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers)
 linear = nn.Linear(hidden_size, output_size)
-print(print_variables_class(rnn, specific_param=["_all_weights"]))
+print_variables_class(rnn, specific_param=["_all_weights"])
 print("rnn:", rnn)
 x = torch.randn(seq_len, batch_size, input_size)  # 输入数据
 h0 = torch.zeros(num_layers, batch_size, hidden_size)  # 隐含层初始化
@@ -93,7 +93,7 @@ print("out.shape:", out.shape)
 print("h.shape:", h.shape)
 out = linear(out)  # 线性变换
 print("out.shape:", out.shape)
-
+print("---")
 
 
 

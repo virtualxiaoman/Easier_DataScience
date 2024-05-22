@@ -50,7 +50,6 @@ def read_df(path):
         df = pd.read_csv(path)
     elif path.endswith(('.xls', '.xlsx')):
         df = pd.read_excel(path)
-    # 读取.sav格式
     elif path.endswith('.sav'):
         df = pd.read_spss(path)
     else:
