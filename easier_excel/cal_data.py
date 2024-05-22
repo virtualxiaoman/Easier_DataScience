@@ -133,7 +133,7 @@ def cal_net(X_train, y_train, net=None, lr=0.001, batch_size=16, num_epochs=100,
 def cal_linear(X, y, use="sklearn", use_bias=True):
     if use == "formula":
         X_b = np.c_[np.ones((X.shape[0], 1)), X]
-        theta_best = np.linalg.inv(X_b.T.dot(X_b)).dot(X_b.T).dot(y)  # (X^T * X)^(-1) * X^T * y
+        theta_best = np.linalg.inv(X_b.T.dot(X_b)).dot(X_b.T).dot(y)  # (X^T @ X)^(-1) @ X^T @ y
         print("公式计算的θ：", theta_best)
     elif use == "sklearn":
         lin_reg = LinearRegression(fit_intercept=use_bias)

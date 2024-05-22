@@ -2,6 +2,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import cv2
+from sklearn.impute import SimpleImputer
 
 def set_pd_option(max_show=True, float_type=True, decimal_places=2, reset_all=False, reset_display=False):
     """
@@ -22,10 +23,12 @@ def set_pd_option(max_show=True, float_type=True, decimal_places=2, reset_all=Fa
         pd.set_option('display.max_columns', None)  # 显示所有列
         pd.set_option('display.expand_frame_repr', False)  # 不允许水平拓展
         pd.set_option('display.max_rows', None)  # 显示所有行
+        pd.set_option('display.width', None)  # 不换行
     else:
         pd.reset_option("display.max_columns")
         pd.reset_option("display.expand_frame_repr")
         pd.reset_option("display.max_rows")
+        pd.reset_option("display.width")
     if float_type:
         str_decimal_places = '%.' + str(decimal_places) + 'f'
         pd.set_option('display.float_format', lambda x: str_decimal_places % x)  # 根据参数设置浮点数输出格式
@@ -47,6 +50,9 @@ def read_df(path):
         df = pd.read_csv(path)
     elif path.endswith(('.xls', '.xlsx')):
         df = pd.read_excel(path)
+    # 读取.sav格式
+    elif path.endswith('.sav'):
+        df = pd.read_spss(path)
     else:
         raise ValueError("不支持的数据类型，目前只支持.csv, .xls, .xlsx")
     return df
@@ -75,10 +81,10 @@ class desc_df:
     def show_df(self, head_n=5, tail_n=3, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False):
         """
         查看数据，请传入DataFrame数据类型的数据。
-        您可能还需要：
+        一些可能用到的，用于查阅：
+            printf(df.info())  # 查看数据的基本信息
             print(df['离散型数据的属性名称'].value_counts())
             print(df['连续性数据的属性名称'].describe())
-        来查看某个属性的值的分布情况。
         :param head_n: 查看前head_n行数据
         :param tail_n: 查看末tail_n行数据
         :param show_shape: 查看数据大小
@@ -103,47 +109,98 @@ class desc_df:
             else:
                 print("数据类型:\n", self.dtypes)
 
-    def describe_df(self, show_stats=True, stats_T=True, stats_detailed=False, show_nan=True):
+    def describe_df(self, show_stats=True, stats_T=True, stats_detailed=False, show_nan=True, show_nan_heatmap=False):
         """
         输出数据的基本统计信息，以及检测缺失值。
+        [使用方法]:
+            desc = read_data.desc_df(df)
+            desc.describe_df(show_stats=True, stats_T=True, stats_detailed=False, show_nan=True, show_nan_heatmap=False)
+        [Tips]:
+            # 如果要把缺失值比例还原成数值，比如3.7%变成0.037，可以使用下面这行代码
+            self.missing_info['缺失值比例'] = self.missing_info['缺失值比例'].apply(lambda x: float(x[:-1]) / 100)
         :param show_stats: 描述性统计信息。显示DataFrame中数值列的描述性统计信息，如均值、标准差、最大值、最小值等
-        :param stats_T: 是否转置输出stats
-        :param stats_detailed: 是否输出stats的详细信息
+        :param stats_T: 是否转置输出stats。转置时，每一列对应一个属性(如count)。
+        :param stats_detailed: 是否输出stats的详细信息。False时，只输出 'count', 'mean', 'min', 'max' 这四项。
         :param show_nan: 缺失值检测。检查DataFrame中是否存在缺失值，并显示每列缺失值的数量或比例。
+        :param show_nan_heatmap: 是否画缺失值热力图
         """
         if stats_T:
             self.numeric_stats = self.df.describe().T
         else:
             self.numeric_stats = self.df.describe()
+
+        # 如果不需要详细的统计信息，则选择特定的列
         if not stats_detailed:
-            self.numeric_stats = self.numeric_stats[['count', 'mean', 'min', 'max']]
+            if stats_T:
+                self.numeric_stats = self.numeric_stats[['count', 'mean', 'min', 'max']]
+            else:
+                self.numeric_stats = self.numeric_stats.loc[['count', 'mean', 'min', 'max']]
+
         if show_stats:
             print("描述性统计信息:\n", self.numeric_stats)
 
         missing_values = self.df.isnull().sum()
-        total_rows = self.df.shape[0]  # 行数，相当于len(self.df)
-        missing_percentage = missing_values / total_rows
+        # total_rows = self.df.shape[0]  # 行数，相当于len(self.df)
+        # missing_percentage = missing_values / total_rows
+        missing_percentage = self.df.isnull().mean()
         self.missing_info = pd.DataFrame({
             '缺失值数量': missing_values,
             '缺失值比例': missing_percentage
         })
         self.missing_info['缺失值比例'] = self.missing_info['缺失值比例'].apply(lambda x: '{:.1%}'.format(x))
+
         if show_nan:
             print("\n缺失值检测:\n", self.missing_info)
+        if show_nan_heatmap:
+            # 黑色是缺失值，白色是非缺失值
+            sns.heatmap(self.df.isna(), cmap='gray_r', cbar_kws={"orientation": "vertical"}, vmin=0, vmax=1)
+            plt.show()
+            plt.close()
+            # 还可以使用import missingno
+            # missingno.matrix(self.df)
 
-    def fill_missing_values(self):
+    def delete_missing_values(self, axis=0, how='any', inplace=True):
         """
-        目前仅支持object用nan填补，其他的用均值填补
+        删除缺失值
+        [Waring]: 该操作会直接在原数据上进行修改
+        :param axis: 0表示删除行，1表示删除列
+        :param how: any表示只要有缺失值就删除，all表示全部是缺失值才删除
+        :param inplace: 是否在原数据上进行修改，不建议设置为False(设置为False时返回删除缺失值后的df)
+        :return: 删除缺失值后的df(这在选用inplace=False时有用)
         """
-        missing_cols = self.missing_info[self.missing_info['缺失值数量'] != 0].index  # 缺失值数量不为 0 的属性
-        # print(missing_cols)
-        for col in missing_cols:
-            dtype = self.df[col].dtype
-            if dtype == 'object':
-                self.df[col].fillna('nan', inplace=True)  # 用 'nan' 填充缺失值
-            else:  # 如果是数值类型
-                mean_value = self.df[col].mean()
-                self.df[col].fillna(mean_value, inplace=True)  # 用均值填充缺失值
+        temp_df = self.df.dropna(axis=axis, how=how, inplace=inplace)
+        # 下面这行是为了更新self.missing_info，便于在外部调用delete_missing_values后能直接查看修改后的self.missing_info的值
+        self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
+        return temp_df  # 返回删除缺失值后的df(这在选用inplace=False时有用)
+
+    def fill_missing_values(self, fill_type='mean'):
+        """
+        填充缺失值
+        [Warning]:
+            该操作会直接在原数据上进行修改，也就是修改self.df
+        [使用方法]:
+            desc = read_data.desc_df(df)
+            desc.fill_missing_values(fill_type=114514)  # 实际填充的时候可别逸一时误一世了
+        [Tips]:
+            目前支持的填充类型有：'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)'。
+            如需删除缺失值请使用delete_missing_values。
+        :param fill_type: 填补类型，支持 'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)'
+        """
+        if isinstance(fill_type, (int, float)):
+            imputer = SimpleImputer(strategy='constant', fill_value=fill_type)
+        else:
+            imputer = SimpleImputer(strategy=fill_type)
+        self.df = pd.DataFrame(imputer.fit_transform(self.df), columns=self.df.columns)
+        # missing_cols = self.missing_info[self.missing_info['缺失值数量'] != 0].index  # 缺失值数量不为 0 的属性
+        # # print(missing_cols)
+        # for col in missing_cols:
+        #     dtype = self.df[col].dtype
+        #     if dtype == 'object':
+        #         self.df[col].fillna('nan', inplace=True)  # 用 'nan' 填充缺失值
+        #     else:  # 如果是数值类型
+        #         mean_value = self.df[col].mean()
+        #         self.df[col].fillna(mean_value, inplace=True)  # 用均值填充缺失值
+
         # 下面这一行是为了更新self.missing_info，便于在外部调用fill_missing_values后能直接查看修改后的self.missing_info的值
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
 
@@ -163,6 +220,7 @@ class desc_df:
             sns.heatmap(self.df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
         plt.show()
         plt.close()
+
 # 一些可能的读入方法以作为记录
 # df_main['index'] = range(1, df_main.shape[0] + 1)  # 但不能将index放在第一行，下面一行代码可以：
 # df_main.insert(0, 'index', range(1, df_main.shape[0] + 1))
