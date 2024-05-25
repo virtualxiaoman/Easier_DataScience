@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression
 
 from easier_tools.Colorful_Console import ColoredText as CT
-from easier_tools.Colorful_Console import _func_warning as fw
+from easier_tools.Colorful_Console import func_warning as func_w
 
 
 def set_plot_format_(ax, **kwargs):
@@ -116,17 +116,18 @@ def _save_plot(plt=None, save_path=None, save_name=None, save_dpi=300, save_form
         raise ValueError("plt不能为None")
     supported_formats = ['png', 'svg', 'jpg']  # 可支持的文件格式
     if save_format not in supported_formats:
-        fw(_save_plot, warning_text=f"不支持的保存格式'{save_format}'，支持的格式有：{', '.join(supported_formats)}。\n"
-                                    f"这里自动更改为'.png'，如有需要，请自行更改为正确的格式",
-           modify_tip="请检查格式是否正确")
+        func_w(_save_plot,
+               warning_text=f"不支持的保存格式'{save_format}'，支持的格式有：{', '.join(supported_formats)}。\n"
+                            f"这里自动更改为'.png'，如有需要，请自行更改为正确的格式",
+               modify_tip="请检查格式是否正确")
         save_format = 'png'
     if save_name is None or save_name == "":
-        fw(_save_plot, warning_text='保存的名字不能为空，这里使用默认的名称"未命名"。，如有需要，请自行更改为正确的名称',
-           modify_tip="请检查是否正确填写了参数save_name")
+        func_w(_save_plot, warning_text='保存的名字不能为空，这里使用默认的名称"未命名"。，如有需要，请自行更改为正确的名称',
+               modify_tip="请检查是否正确填写了参数save_name")
         save_name = "未命名"
     if isinstance(save_path, str) and isinstance(save_name, str):
         if not os.path.exists(save_path):
-            fw(_save_plot, warning_text=f'路径"{save_path}"不存在，已经为你创建', modify_tip="请检查路径是否正确")
+            func_w(_save_plot, warning_text=f'路径"{save_path}"不存在，已经为你创建', modify_tip="请检查路径是否正确")
             os.makedirs(save_path)
         # 必须先保存再plt.show()，不然show会释放缓冲区里的图像
         plt.savefig(os.path.join(save_path, f"{save_name}.{save_format}"), dpi=save_dpi)  # dpi为了调节清晰度
@@ -199,11 +200,11 @@ def plot_xy(x, y, title="Title", label='label', color='blue', linestyle='-', x_l
     """
     if ax is not None:
         if not use_ax:
-            fw(func=plot_xy, warning_text="在没有use_ax的情况下，是不会返回ax的", modify_tip="使用use_ax=True")
-    if ax is None:
+            func_w(func=plot_xy, warning_text="在没有use_ax的情况下，是不会返回ax的", modify_tip="使用use_ax=True")
+    elif ax is None:
         if use_ax:
-            fw(func=plot_xy, warning_text="在use_ax的情况下，最好是主动传入ax，这种情况下是默认使用函数内的ax",
-               modify_tip="传入自己的ax")
+            func_w(func=plot_xy, warning_text="在use_ax的情况下，最好是主动传入ax，这种情况下是默认使用函数内的ax",
+                   modify_tip="传入自己的ax")
         _, ax = plt.subplots()
     # 绘图
     plt.rcParams['font.sans-serif'] = [font_name]
@@ -407,14 +408,14 @@ def pair_feature_plot(df, kde_hist=True, diag=None, kind=None):  # todo 要在dr
         pair_feature_plot(df, kde_hist=False, diag='hist', kind='reg')
     :param df: 数据集
     :param kde_hist: 是否这样绘制: upper:scatter, lower:kde, diag:hist
-    :param diag: [kde_hist=False时有效]对角线的图形类型，可取值为'auto', 'hist', 'kde', None
-    :param kind: [kde_hist=False时有效]非对角线的图形类型， 可取值为'scatter', 'kde', 'hist', 'reg'
+    :param diag: [kde_hist=False时有效]对角线的图形类型，可取值为 'auto', 'hist', 'kde', None
+    :param kind: [kde_hist=False时有效]非对角线的图形类型， 可取值为 'scatter', 'kde', 'hist', 'reg'
     :return:
     """
     sns.set(style="ticks")  # 设置风格为ticks，坐标轴上有刻度
     if kde_hist:
         if diag is not None or kind is not None:
-            fw(warning_text='kde_hist=True时，diag和kind参数无效', func=pair_feature_plot, modify_tip='修改为kde_hist=False')
+            func_w(warning_text='kde_hist=True时，diag和kind参数无效', func=pair_feature_plot, modify_tip='修改为kde_hist=False')
         # 设置右上角和左下角的对角线为散点图和概率密度曲面图
         g = sns.PairGrid(df)
         g.map_upper(sns.scatterplot)

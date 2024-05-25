@@ -7,17 +7,29 @@ xm_rd.set_pd_option(max_show=True, float_type=True, decimal_places=2)
 path = '../input/CharacterData.xlsx'
 df = xm_rd.read_df(path)
 
+print("----------读取数据信息----------")
 desc_df = xm_rd.desc_df(df)
-desc_df.show_df(head_n=0, tail_n=0, show_columns=False, show_dtypes=False)
+desc_df.show_df(head_n=5, tail_n=5, show_columns=False, show_dtypes=False)
 df_4 = df[df['星级'] == 4]
 df_5 = df[df['星级'] == 5]
+print("全部数据", end='')
 desc_df.describe_df(stats_detailed=False)
+print("星级=4的", end='')
 xm_rd.desc_df(df_4).describe_df(stats_detailed=False, show_nan=False)
+print("星级=5的", end='')
 xm_rd.desc_df(df_5).describe_df(stats_detailed=False, show_nan=False)
-desc_df.fill_missing_values()
-# print(desc_df.missing_info)
 
-print('--------------')
+print("----------处理异常值与缺失值----------")
+# 处理缺失值
+desc_df.show_df(head_n=5, tail_n=5, show_columns=False, show_dtypes=False)
+desc_df.process_outlier(method='IQR', show_info=True)
+print(desc_df.df.iloc[48:49])  # 48行荒泷一斗的防御力为异常值
+print(desc_df.missing_info)
+# 均值填补
+desc_df.fill_missing_values(fill_type='mean')
+print(desc_df.missing_info)
+
+exit(1)
 
 df_main = df[['星级', '生命值', '攻击力', '防御力']].copy()
 draw_df = xm_dd.draw_df(df_main)

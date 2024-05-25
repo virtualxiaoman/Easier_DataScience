@@ -27,7 +27,7 @@ trial_models: 是一些机器学习算法的应用尝试或手动实现
 .
 ├── easier_excel                # [·] 用机器学习处理表格类型的数据
 │   ├── __init__.py             # [√] init
-│   ├── cal_data.py             # [·] 计算数据的统计量
+│   ├── cal_data.py             # [×] 计算数据的统计量
 │   ├── draw_data.py            # [🈵] 绘图
 │   └── math_formula.py         # [·] 计算积分，导数，求解最优化问题等
 │   └── read_data.py            # [🈵] 读取、描述、预处理数据

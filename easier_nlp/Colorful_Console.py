@@ -1,5 +1,10 @@
 class ColoredText:
-    """用于更改输出到控制台的颜色"""
+    """
+    用于更改输出到控制台的颜色
+    [使用方法]:
+         from easier_tools.Colorful_Console import ColoredText as CT
+         print(CT("异常值的一些信息:\n").blue())
+    """
     def __init__(self, text):
         self.RED = '\033[91m'
         self.YELLOW = '\033[93m'

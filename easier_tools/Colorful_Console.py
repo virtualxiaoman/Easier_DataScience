@@ -33,7 +33,7 @@ class ColoredText:
 
 CT = ColoredText
 
-def _func_warning(func=None, warning_text=None, modify_tip=None):
+def func_warning(func=None, warning_text=None, modify_tip=None):
     """
     输出函数的警告信息
     :param func: 函数本身、

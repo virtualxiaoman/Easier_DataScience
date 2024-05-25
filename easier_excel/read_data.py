@@ -1,9 +1,15 @@
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import numpy as np
+from scipy import stats
 import cv2
+from sklearn.experimental import enable_iterative_imputer  # 为了使用IterativeImputer，需要导入这个
 from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
 from sklearn.ensemble import RandomForestRegressor
+
+from easier_tools.Colorful_Console import func_warning as func_w
+from easier_tools.Colorful_Console import ColoredText as CT
 
 def set_pd_option(max_show=True, float_type=True, decimal_places=2, reset_all=False, reset_display=False):
     """
@@ -71,14 +77,19 @@ class desc_df:
         self.numeric_stats = None  # 数据描述
         self.missing_info = None  # 缺失值信息
 
+        self.numeric_df = self.df.select_dtypes(include=['number'])  # 数值型数据
+        self.non_numeric_df = self.df.select_dtypes(exclude=['number'])  # 非数值型数据
+
     def get_df(self):
         """
         如果在初始化这个类desc_df的时候传入的是df.copy()，那就不会对原来的df进行更改。
         此时如果需要获得更改后的df，请使用这个函数吧！
+        [Tips]:
+            该函数不如直接使用.df，这里只是为了免得以前的代码寄了，所以保留了这个函数
         """
         return self.df
 
-    def show_df(self, head_n=5, tail_n=3, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False):
+    def show_df(self, head_n=0, tail_n=0, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False):
         """
         查看数据，请传入DataFrame数据类型的数据。
         一些可能用到的，用于查阅：
@@ -96,18 +107,22 @@ class desc_df:
         self.columns = self.df.columns
         self.dtypes = self.df.dtypes
         if head_n:
+            print(CT("前{}行数据:".format(head_n)).blue())
             print(self.df.head(head_n))  # 查看前head_n行数据
         if tail_n:
+            print(CT("末{}行数据:".format(tail_n)).blue())
             print(self.df.tail(tail_n))  # 查看末tail_n行数据
         if show_shape:
-            print("Shape:", self.shape)  # 数据大小
+            print(CT("Shape: ").blue() + str(self.shape))  # 数据大小
         if show_columns:
-            print("属性名称:\n", self.columns)  # 查看表首行(属性名称)
+            print(CT("属性名称:").blue())
+            print(self.columns)  # 查看表首行(属性名称)
         if show_dtypes:
+            print(CT("数据类型:").blue())
             if dtypes_T:
-                print("数据类型:\n", self.dtypes.to_frame().T)
+                print(self.dtypes.to_frame().T)
             else:
-                print("数据类型:\n", self.dtypes)
+                print(self.dtypes)
 
     def describe_df(self, show_stats=True, stats_T=True, stats_detailed=False, show_nan=True, show_nan_heatmap=False):
         """
@@ -116,8 +131,10 @@ class desc_df:
             desc = read_data.desc_df(df)
             desc.describe_df(show_stats=True, stats_T=True, stats_detailed=False, show_nan=True, show_nan_heatmap=False)
         [Tips]:
-            # 如果要把缺失值比例还原成数值，比如3.7%变成0.037，可以使用下面这行代码
-            self.missing_info['缺失值比例'] = self.missing_info['缺失值比例'].apply(lambda x: float(x[:-1]) / 100)
+            1.如果要把缺失值比例还原成数值，比如3.7%变成0.037，可以使用下面这行代码：
+                self.missing_info['缺失值比例'] = self.missing_info['缺失值比例'].apply(lambda x: float(x[:-1]) / 100)
+            2.有时为了更新missing_info，需要使用下面这行代码：
+                self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
         :param show_stats: 描述性统计信息。显示DataFrame中数值列的描述性统计信息，如均值、标准差、最大值、最小值等
         :param stats_T: 是否转置输出stats。转置时，每一列对应一个属性(如count)。
         :param stats_detailed: 是否输出stats的详细信息。False时，只输出 'count', 'mean', 'min', 'max' 这四项。
@@ -137,7 +154,7 @@ class desc_df:
                 self.numeric_stats = self.numeric_stats.loc[['count', 'mean', 'min', 'max']]
 
         if show_stats:
-            print("描述性统计信息:\n", self.numeric_stats)
+            print(CT("描述性统计信息:\n").blue(), self.numeric_stats)
 
         missing_values = self.df.isnull().sum()
         # total_rows = self.df.shape[0]  # 行数，相当于len(self.df)
@@ -150,7 +167,7 @@ class desc_df:
         self.missing_info['缺失值比例'] = self.missing_info['缺失值比例'].apply(lambda x: '{:.1%}'.format(x))
 
         if show_nan:
-            print("\n缺失值检测:\n", self.missing_info)
+            print(CT("缺失值检测:\n").blue(), self.missing_info)
         if show_nan_heatmap:
             # 黑色是缺失值，白色是非缺失值
             sns.heatmap(self.df.isna(), cmap='gray_r', cbar_kws={"orientation": "vertical"}, vmin=0, vmax=1)
@@ -158,6 +175,23 @@ class desc_df:
             plt.close()
             # 还可以使用import missingno
             # missingno.matrix(self.df)
+
+    def draw_heatmap(self, scale=False, xticklabels=None):
+        """
+        画热力图
+        :param scale: 是否标准化
+        :param xticklabels: x轴标签，None代表使用df的columns
+        """
+        if xticklabels is None:
+            xticklabels = list(self.df.columns)
+        if scale:
+            df = self.df.copy()
+            df = (df - df.mean()) / df.std()
+            sns.heatmap(df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
+        else:
+            sns.heatmap(self.df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
+        plt.show()
+        plt.close()
 
     def delete_missing_values(self, axis=0, how='any', inplace=True):
         """
@@ -183,33 +217,47 @@ class desc_df:
             desc = read_data.desc_df(df)
             desc.fill_missing_values(fill_type=114514)  # 实际填充的时候可别逸一时误一世了
         [Tips]:
-            目前支持的填充类型有：
-            SimpleImputer: 'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)'。
-            KNNImputer: 'knn'。
-            IterativeImputer: 'rf'。
-            如需删除缺失值请使用delete_missing_values。
-            文档：https://scikit-learn.org/stable/modules/impute.html
+            1.对于数值型数据，目前支持的填充类型有：
+                SimpleImputer: 'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)'。
+                KNNImputer: 'knn'。
+                IterativeImputer: 'rf'。
+            2.对于其他类型的数据，目前只支持的填充类型有：
+                填充 'nan'，也就是输出时显示NaN（其实还是缺失值~~）
+            3.如需删除缺失值请使用：delete_missing_values。
+            4.文档：https://scikit-learn.org/stable/modules/impute.html
         :param fill_type: 填补类型，支持 'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)', 'knn', 'rf'
         :param kwargs: 一些填充类型的参数。如
             n_neighbors(fill_type='knn'时生效),
             random_state, max_iter(fill_type='rf'时生效)
         """
-        _n_neighbors = kwargs.get('n_neighbors', 5)
-        _random_state = kwargs.get('random_state', 42)
-        _max_iter = kwargs.get('max_iter', 20)
+        n_neighbors = kwargs.get('n_neighbors', 5)
+        random_state = kwargs.get('random_state', 42)
+        max_iter = kwargs.get('max_iter', 20)
 
+        # 处理数值型数据
         if isinstance(fill_type, (int, float)):
             imputer = SimpleImputer(strategy='constant', fill_value=fill_type)
         elif fill_type in ['mean', 'median', 'most_frequent']:
             imputer = SimpleImputer(strategy=fill_type)
         elif fill_type == 'knn':
-            imputer = KNNImputer(n_neighbors=_n_neighbors)
+            imputer = KNNImputer(n_neighbors=n_neighbors)
         elif fill_type == 'rf':
-            imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=_random_state), max_iter=_max_iter)
+            imputer = IterativeImputer(estimator=RandomForestRegressor(random_state=random_state), max_iter=max_iter)
         else:
+            func_w(self.fill_missing_values,
+                   warning_text=f"不支持的fill_type格式'{fill_type}'，这里默认采用0填充，如有需要，请自行更改为正确的格式",
+                   modify_tip="请检查fill_type是否正确")
             imputer = SimpleImputer(strategy='constant', fill_value=0)  # 默认采用0填充
+        filled_numeric_df = pd.DataFrame(imputer.fit_transform(self.numeric_df), columns=self.numeric_df.columns)
 
-        self.df = pd.DataFrame(imputer.fit_transform(self.df), columns=self.df.columns)
+        # 处理非数值型数据
+        self.non_numeric_df = self.df.select_dtypes(exclude=['number'])
+        filled_non_numeric_df = self.non_numeric_df.fillna(float('nan'))  # NaN填充
+
+        # 合并
+        self.df = pd.concat([filled_numeric_df, filled_non_numeric_df], axis=1)
+
+        # 下面这段代码以前写的，仅作为保存与参考
         # missing_cols = self.missing_info[self.missing_info['缺失值数量'] != 0].index  # 缺失值数量不为 0 的属性
         # # print(missing_cols)
         # for col in missing_cols:
@@ -223,30 +271,76 @@ class desc_df:
         # 下面这一行是为了更新self.missing_info，便于在外部调用fill_missing_values后能直接查看修改后的self.missing_info的值
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
 
-    def draw_heatmap(self, scale=False, xticklabels=None):
-        """
-        画热力图
-        :param scale: 是否标准化
-        :param xticklabels: x轴标签，None代表使用df的columns
-        """
-        if xticklabels is None:
-            xticklabels = list(self.df.columns)
-        if scale:
-            df = self.df.copy()
-            df = (df - df.mean()) / df.std()
-            sns.heatmap(df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
-        else:
-            sns.heatmap(self.df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
-        plt.show()
-        plt.close()
-
-    def process_outlier(self):
+    def process_outlier(self, method='IQR', process_type='delete', show_info=False):
         """
         处理异常值
+        [Warning]:
+            该操作会直接在原数据上进行修改，也就是修改self.df
         [Tips]:
-            文档：https://scikit-learn.org/stable/modules/outlier_detection.html
+            1.IQR:
+                四分位间距(interquartile range) IQR=Q3-Q1，在[Q1-1.5*IQR, Q3+1.5*IQR]之外的数据被认为是异常值。
+                不过在Sklearn绘制箱型图的时候，左右边界是[Q1-1.5*IQR, Q3+1.5*IQR]里的最远的实际的数据点，而不一定是计算得到的值。
+            2.Z-score:
+                |X-mu|/sigma > 3 的数据被认为是异常值。
+            3.文档：
+                Visualize-ML/Book6_Ch03的ipynb
+                https://scikit-learn.org/stable/modules/outlier_detection.html
+        :param method: 处理异常值的方法，支持 'IQR', 'Z-score'
+        :param process_type: 处理异常值的类型，支持 'delete', 'fill', 'ignore'
+        :param show_info: 是否输出异常值的一些信息
         """
-        pass
+        # 处理数值型数据
+        lower_bound, upper_bound = None, None
+        if method not in ['IQR', 'Z-score']:
+            func_w(self.process_outlier,
+                   warning_text=f"不支持的method格式'{method}'，这里默认选择IQR",
+                   modify_tip="请检查method是否正确")
+            method = 'IQR'
+        if method == 'IQR':
+            Q1 = self.numeric_df.quantile(0.25)  # 返回的是一个Series
+            Q3 = self.numeric_df.quantile(0.75)
+            IQR = Q3 - Q1
+            lower_bound = Q1 - 1.5 * IQR
+            upper_bound = Q3 + 1.5 * IQR
+        elif method == 'Z-score':
+            threshold = 3
+            Z_scores = np.abs((self.numeric_df - self.numeric_df.mean()) / self.numeric_df.std())  # 返回的是一个DataFrame
+            # 返回的是一个布尔值的DataFrame，True表示异常值
+            outliers = Z_scores > threshold
+            # 返回的是一个Series，~是取反，mask是将不满足条件的值替换为NaN，然后取最小值，即最小的正常值
+            lower_bound = self.numeric_df.mask(~outliers).min()
+            upper_bound = self.numeric_df.mask(~outliers).max()  # 返回的是一个Series，即最大的正常值
+        else:
+            pass
+
+        # 异常值的条件是小于下界或者大于上界。outlier_index是一个DataFrame，True表示异常值
+        outlier_index = (self.numeric_df < lower_bound) | (self.numeric_df > upper_bound)
+
+        if show_info:
+            print(CT("异常值的数量:\n").blue(), self.numeric_df[outlier_index].count())
+            print(CT("异常值的比例:\n").blue(), self.numeric_df[outlier_index].count() / self.numeric_df.shape[0])
+            # 输出outlier_index为True的坐标
+            print(CT("异常值的坐标:\n").blue(), np.where(outlier_index))
+
+        if process_type == 'delete':
+            self.numeric_df = self.numeric_df[~outlier_index]
+        elif process_type == 'fill':
+            self.numeric_df[outlier_index] = np.nan
+        elif process_type == 'ignore':
+            pass
+        else:
+            func_w(self.process_outlier,
+                   warning_text=f"不支持的process_type格式'{process_type}'，这里默认不做修改，也就是ignore",
+                   modify_tip="请检查process_type是否正确")
+
+        # 处理非数值型数据
+        self.non_numeric_df = self.df.select_dtypes(exclude=['number'])
+        # 合并
+        self.df = pd.concat([self.numeric_df, self.non_numeric_df], axis=1)
+
+        # 下面这一行是为了更新self.missing_info，便于在外部调用fill_missing_values后能直接查看修改后的self.missing_info的值
+        self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
+
 
 # 一些可能的读入方法以作为记录
 # df_main['index'] = range(1, df_main.shape[0] + 1)  # 但不能将index放在第一行，下面一行代码可以：
