@@ -7,6 +7,7 @@ import cv2
 from sklearn.experimental import enable_iterative_imputer  # 为了使用IterativeImputer，需要导入这个
 from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import PowerTransformer
 
 from easier_tools.Colorful_Console import func_warning as func_w
 from easier_tools.Colorful_Console import ColoredText as CT
@@ -340,6 +341,33 @@ class desc_df:
 
         # 下面这一行是为了更新self.missing_info，便于在外部调用fill_missing_values后能直接查看修改后的self.missing_info的值
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
+
+    def transform_df(self, minmax=(0, 1)):
+        """
+        数据转换，包括中心化(去均值)，标准化(Z分数)，归一化(minmax)
+        得到:
+            self.demeaned_df: 去均值
+            self.zscore_df: Z-score标准化
+            self.minmax_df: 映射到[minmax[0], minmax[1]]的区间上
+        [Tips]:
+            1.标准化standardization: 使得处理后的数据具有固定均值0和标准差1，可以使得不同特征之间的数值尺度相同，
+            避免某些特征对模型的影响过大，从而提高模型的鲁棒性和稳定性。标准化不会限制数据的范围。
+            2.归一化normalization: 将数据缩放到[0,1]或[-1,1]的区间上。，可以使得不同特征的权重相同，
+            避免某些特征对模型的影响过大，从而提高模型的准确性和泛化能力。归一化可使所有特征具有相似的尺度。
+        """
+        self.demeaned_df = self.numeric_df - self.numeric_df.mean()
+        self.zscore_df = (self.numeric_df - self.numeric_df.mean()) / self.numeric_df.std()
+        self.minmax_df = (minmax[1] - minmax[0]) * (self.numeric_df - self.numeric_df.min()) / \
+                         (self.numeric_df.max() - self.numeric_df.min()) + minmax[0]
+        if (self.numeric_df < 0).any().any():
+            func_w(self.transform_df,
+                   warning_text="数据中有负数项，无法进行boxcox",
+                   modify_tip="请检查数据是否有负数项")
+        else:
+            pt = PowerTransformer(method='box-cox')
+            self.boxcox_df = pt.fit_transform(self.numeric_df)
+        pt = PowerTransformer(method='yeo-johnson')
+        self.yeojohnson_df = pt.fit_transform(self.numeric_df)
 
 
 # 一些可能的读入方法以作为记录

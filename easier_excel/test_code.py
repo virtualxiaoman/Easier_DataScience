@@ -37,19 +37,35 @@ read_data.set_pd_option(max_show=True, float_type=True)
 # font_list = plt.rcParams['font.sans-serif']
 # print("当前使用的字体列表：", font_list)
 
-path = "D:\HP\Desktop\杂七杂八数据集\B站科普短视频\数据.sav"
-df = read_data.read_df(path)
-# print(df.head())
-# print(df.info())
-# 将随机的列与行的数据变成nan
-df = df.mask(np.random.random(df.shape) < 0.1)  # mask函数是将符合条件的数据变成nan
-# print(df.head())
+# path = "D:\HP\Desktop\杂七杂八数据集\B站科普短视频\数据.sav"
+# df = read_data.read_df(path)
+# # print(df.head())
+# # print(df.info())
+# # 将随机的列与行的数据变成nan
+# df = df.mask(np.random.random(df.shape) < 0.1)  # mask函数是将符合条件的数据变成nan
+# # print(df.head())
+#
+# desc = read_data.desc_df(df)
+# desc.fill_missing_values(fill_type=114514)  # 实际填充的时候可别逸一时误一世了
+# desc.describe_df(show_stats=True, stats_T=False)
+#
+# print("----")
+# from easier_tools.print_variables import print_variables_function
+# print_variables_function(desc.describe_df, show_stats=True, stats_T=False)
 
-desc = read_data.desc_df(df)
-desc.fill_missing_values(fill_type=114514)  # 实际填充的时候可别逸一时误一世了
-desc.describe_df(show_stats=True, stats_T=False)
 
-print("----")
-from easier_tools.print_variables import print_variables_function
-print_variables_function(desc.describe_df, show_stats=True, stats_T=False)
+# 生成一组对数正态分布的数据
+x = stats.lognorm.rvs(0.5, size=1000)
+# 绘制直方图
+plt.hist(x, bins=50, density=True, alpha=0.6, color='g')
+plt.show()
+# 对x进行z-score标准化
+x_zscore = stats.zscore(x)
+# 绘制直方图
+plt.hist(x_zscore, bins=50, density=True, alpha=0.6, color='g')
+plt.show()
+
+
+
+
 
