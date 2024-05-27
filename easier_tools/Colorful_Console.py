@@ -45,14 +45,36 @@ def func_warning(func=None, warning_text=None, modify_tip=None):
         file_name = inspect.getsourcefile(func)
         file_name = file_name.split("/")[-1]  # 获取文件名
     else:
-        raise ValueError("func_name不能为None")
+        raise ValueError("func不能为None")
     if warning_text is None:
         raise ValueError("warning_text不能为None")
     if modify_tip is None:
         modify_tip = "没有建议修改的提示"
     print(CT("Warning in func").red(), CT(file_name+'\\'+func_name).yellow(),
-          CT(f": {warning_text}。\n修改建议:").red(), CT(f"{modify_tip}").pink())
+          CT(f": {warning_text}。\n修改建议:").red(),
+          CT(f"{modify_tip}").pink())
 
+def func_error(func=None, error_text=None, modify_tip=None):
+    """
+    输出函数的错误信息
+    :param func: 函数本身、
+    :param error_text: 错误信息
+    :param modify_tip: 建议修改的提示
+    """
+    if func is not None:
+        func_name = func.__name__
+        file_name = inspect.getsourcefile(func)
+        file_name = file_name.split("/")[-1]  # 获取文件名
+    else:
+        raise ValueError("func不能为None")
+    if error_text is None:
+        raise ValueError("error_text不能为None")
+    if modify_tip is None:
+        modify_tip = "没有建议修改的提示"
+    print(CT("Error in func").red(), CT(file_name+'\\'+func_name).yellow(),
+          CT(f": {error_text}。\n修改建议:").red(),
+          CT(f"{modify_tip}").pink())
+    raise ValueError(f"Error in func {file_name}\\{func_name}: {error_text}")
 
 
 

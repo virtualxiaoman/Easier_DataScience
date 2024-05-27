@@ -1,15 +1,18 @@
+import cv2
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.polynomial.polynomial import Polynomial
 from scipy import stats
-import cv2
+from scipy.interpolate import interp1d, interp2d, lagrange, RectBivariateSpline, griddata, Rbf  # interp2d已被弃用
 from sklearn.experimental import enable_iterative_imputer  # 为了使用IterativeImputer，需要导入这个
 from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import PowerTransformer
 
 from easier_tools.Colorful_Console import func_warning as func_w
+from easier_tools.Colorful_Console import func_error as func_e
 from easier_tools.Colorful_Console import ColoredText as CT
 
 def set_pd_option(max_show=True, float_type=True, decimal_places=2, reset_all=False, reset_display=False):
@@ -376,6 +379,140 @@ class desc_df:
 # print(df_main.iloc[5])  # 获取第6行
 
 
+class interpolate_data:
+    def __init__(self, x, y, z=None):
+        """
+        初始化。分为 datadims=1 或 datadims=2 两种情况。
+        :param x: 横坐标
+        :param y: 纵坐标
+        :param z: None或者高度
+        """
+        self.x = x
+        self.y = y
+        self.z = z
+        self.datadims = None  # 已知数据的维度
+        self.x_predict = None
+        self.y_predict = None
+        self.z_predict = None
+        self.f_predict = None  # 插值函数
+        self.init_params()
+
+    def interpolate(self, method='cubic', show_plt=True, plt_2d=True):
+        """
+        插值
+        [使用方法-整体预测]:
+        1.一维
+            x_train = np.linspace(0, 6, num=7, endpoint=True)
+            y_train = np.sin(x_train) + x_train/6  # 相当于加上一点点噪声，免得太规则
+            methods = ['previous', 'next', 'nearest', 'linear', 'cubic']
+            for kind in methods:
+                interpolate_data(x_train, y_train).interpolate(method=kind)
+        2.二维
+          二维的时候，一般而言x,y形成的是平面网格，z是高度。但有时候不是网格也可以，比如下面的例子。
+          2.0 下面两个例子都需要的公用函数与变量：
+            def y_func(x1, x2):
+                v = (2 * x1 + x2) * np.exp(-2 * (x1 ** 2 + x2 ** 2))
+                return v
+            methods = ['linear', 'cubic']
+          2.1.网格
+            x1_data = np.linspace(-1, 1, 5)
+            x2_data = np.linspace(-1, 1, 5)
+            xx1_data, xx2_data = np.meshgrid(x1_data, x2_data)
+            yy_data = y_func(xx1_data, xx2_data)  # (5, 5)
+            for kind in methods:
+                interpolate_data(xx1_data, xx2_data, yy_data).interpolate(method=kind, show_plt=True, plt_2d=False)
+          2.2 非网格
+            x1_data = np.linspace(-1, 1, 5)
+            x2_data = np.linspace(-1, 1, 5)
+            y_data = y_func(x1_data, x2_data)  # (5,)
+            for kind in methods:
+                interpolate_data(x1_data, x2_data, y_data).interpolate(method=kind, show_plt=True, plt_2d=False)
+          2.3 二者在哪里不同
+            2.1中的数据是网格数据，是一个二维数组，而2.2中的数据是非网格数据，是一个一维数组。
+            2.1中的数据像是张起来了一个平面，而2.2中的数据是一条曲线(这里是平面的对角线)。
+            一般而言，2.1中的数据像是一个表格，里面存放的是z(深度/高度等)，比如国赛2023的B题。
+            而2.2中的数据是每个确定的坐标对应的z值。
+        [使用方法-具体值的预测]:
+          对于创建的类的实例，可以使用其中的f_predict来预测具体的值，比如：
+            interp = interpolate_data(xx1_data, xx2_data, yy_data)
+            interp.interpolate(method=kind, show_plt=False, plt_2d=True)
+            y_test = interp.f_predict(0.0032, 0.0004)  # 请注意f_predict的参数数量应该与你的预测维度相同
+        [Tips]:
+            1.维度datadims是根据传入的x,y,z自动确定的。不传入z时维度是1，传入z时维度是2。
+            2.插值和拟合有一个相同之处，它们都是根据已知数据点，构造函数，从而推断得到更多数据点。
+                插值一般得到分段函数，分段函数通过所有给定的数据点。
+                拟合得到的函数一般只有一个解析式，这个函数尽可能靠近样本数据点。
+            3.method在一维时有：
+                'previous' 是取前一个值，'next' 是取后一个值，'nearest' 是取最近的值。
+                'linear' 是线性插值，'cubic' 是三次插值，'lagrange' 是拉格朗日插值。
+              在二维时有：
+                'multiquadric' 是多孔径插值，'inverse' 是反距离插值，'gaussian' 是高斯插值。
+                'linear' 是线性插值，'cubic' 是三次插值，'quintic' 是五次插值，'thin_plate' 是薄板样条插值。
+        :param method: 插值方法，有 'previous', 'next', 'nearest', 'linear', 'cubic', 'lagrange'
+        :param show_plt: 是否绘制插值后的图像
+        :param plt_2d: 是否绘制2D图像。只在3d预测时有效。默认为True表示绘制2D的colorbar图像，False表示绘制3D的plot_surface图像
+        """
+        if self.datadims == 1:
+            if method in ['previous', 'next', 'nearest', 'linear', 'cubic']:
+                self.f_predict = interp1d(self.x, self.y, kind=method)  # interp1d是一维插值函数
+                self.y_predict = self.f_predict(self.x_predict)
+            elif method == 'lagrange':
+                self.f_predict = lagrange(self.x, self.y)  # 拉格朗日插值
+                self.y_predict = self.f_predict(self.x_predict)
+            else:
+                func_e(self.interpolate,
+                       error_text=f"不支持的method格式'{method}'",
+                       modify_tip="请检查method是否正确")
+            if show_plt:
+                # todo 这里最好改为使用draw_data里的函数，但在此之前最好能够将draw_data里的参数变成**kwargs形式
+                fig, axs = plt.subplots()
+                plt.plot(self.x, self.y, 'or')
+                plt.plot(self.x_predict, self.y_predict, linewidth=1.5)
+                plt.xlabel('x')
+                plt.ylabel('y')
+                plt.title(method)
+                plt.show()
+                plt.close()
+        elif self.datadims == 2:
+            if method in ['multiquadric', 'inverse', 'gaussian', 'linear', 'cubic', 'quintic', 'thin_plate']:
+                self.f_predict = Rbf(self.x, self.y, self.z, function=method)  # 二维插值函数
+                self.z_predict = self.f_predict(self.grid_x, self.grid_y)
+            else:
+                func_e(self.interpolate,
+                       error_text=f"不支持的method格式'{method}'",
+                       modify_tip="请检查method是否正确")
+            if show_plt:
+                if plt_2d:
+                    fig, axs = plt.subplots()
+                    plt.imshow(self.z_predict, extent=(self.x.min(), self.x.max(), self.y.min(), self.y.max()),
+                               origin='lower', cmap='RdYlBu_r')
+                    plt.colorbar()
+                    plt.show()
+                    plt.close()
+                else:
+                    fig = plt.figure()
+                    ax = fig.add_subplot(111, projection='3d')
+                    ax.scatter(self.x, self.y, self.z, marker='x', c='k')
+                    ax.plot_surface(self.grid_x, self.grid_y, self.z_predict, cmap='RdYlBu_r')
+                    plt.show()
+                    plt.close()
+        else:
+            pass  # 不会进入该分支
+
+    def init_params(self, x_predict_nums=500, y_predict_nums=500):
+        """
+        初始化一些参数
+        """
+        self.x_predict = np.linspace(self.x.min(), self.x.max(), x_predict_nums)  # 生成2d预测的x坐标
+
+        self.grid_x, self.grid_y = np.mgrid[self.x.min():self.x.max():100j, self.y.min():self.y.max():100j]  # 生成3d预测所需的网格
+
+        if self.z is None:
+            self.datadims = 1
+        else:
+            self.datadims = 2
+            # self.y_predict = np.linspace(self.y.min(), self.y.max(), y_predict_nums)
+
 def read_image(img_path, gray_pic=False, show_details=False):
     """
     读取图片
@@ -401,4 +538,9 @@ def read_image(img_path, gray_pic=False, show_details=False):
         plt.show()
         plt.close()
     return img
+
+
+if __name__ == "__main__":
+    pass
+
 

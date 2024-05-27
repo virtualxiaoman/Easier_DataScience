@@ -8,7 +8,7 @@ import easier_excel.cal_data as cal_data
 from easier_excel.draw_data import plot_xy, _save_plot
 from scipy import stats
 
-read_data.set_pd_option(max_show=True, float_type=True)
+# read_data.set_pd_option(max_show=True, float_type=True)
 #
 # path = '../input/CharacterData.xlsx'
 # df = xm_rd.read_df(path)
@@ -54,18 +54,98 @@ read_data.set_pd_option(max_show=True, float_type=True)
 # print_variables_function(desc.describe_df, show_stats=True, stats_T=False)
 
 
-# 生成一组对数正态分布的数据
-x = stats.lognorm.rvs(0.5, size=1000)
-# 绘制直方图
-plt.hist(x, bins=50, density=True, alpha=0.6, color='g')
+# # 生成一组对数正态分布的数据
+# x = stats.lognorm.rvs(0.5, size=1000)
+# # 绘制直方图
+# plt.hist(x, bins=50, density=True, alpha=0.6, color='g')
+# plt.show()
+# # 对x进行z-score标准化
+# x_zscore = stats.zscore(x)
+# # 绘制直方图
+# plt.hist(x_zscore, bins=50, density=True, alpha=0.6, color='g')
+# plt.show()
+
+from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
+import numpy as np
+from easier_excel.read_data import interpolate_data
+
+# x_train = np.linspace(0, 6, num=7, endpoint=True)
+# y_train = np.sin(x_train) + x_train/6  # 相当于加上噪声
+#
+# x_test = np.linspace(0, 6, num=500, endpoint=True)
+#
+# methods = ['linear', 'nearest', 'cubic', 'previous', 'lagrange']
+# for kind in methods:
+#     interpolate_data(x_train, y_train).interpolate(method=kind, show_plt=False)
+from scipy.interpolate import griddata, interp2d, Rbf, RectBivariateSpline, SmoothBivariateSpline, RegularGridInterpolator
+
+x_train = np.linspace(0, 6, num=7, endpoint=True)
+y_train = np.sin(x_train) + x_train / 6  # 相当于加上噪声
+methods = ['previous', 'next', 'nearest', 'linear', 'cubic']
+for kind in methods:
+    interp = interpolate_data(x_train, y_train)
+    interp.interpolate(method=kind)
+    print(interp.f_predict(0.5))
+
+def y_func(x1, x2):
+    v = (2 * x1 + x2) * np.exp(-2 * (x1 ** 2 + x2 ** 2))
+    return v
+methods = ['linear', 'cubic']
+
+x1_data = np.linspace(-1, 1, 5)
+x2_data = np.linspace(-1, 1, 5)
+y_data = y_func(x1_data, x2_data)  # (5,)
+for kind in methods:
+    interp = interpolate_data(x1_data, x2_data, y_data)
+    interp.interpolate(method=kind, show_plt=False, plt_2d=True)
+    y_test = interp.f_predict(0.0032, 0.0004)
+    print(y_test)
+
+x1_data = np.linspace(-1, 1, 5)
+x2_data = np.linspace(-1, 1, 5)
+xx1_data, xx2_data = np.meshgrid(x1_data, x2_data)
+yy_data = y_func(xx1_data, xx2_data)  # (5, 5)
+for kind in methods:
+    interp = interpolate_data(xx1_data, xx2_data, yy_data)
+    interp.interpolate(method=kind, show_plt=False, plt_2d=True)
+    y_test = interp.f_predict(0.0032, 0.0004)
+    print(y_test)
+exit(1)
+import numpy as np
+
+
+def func(x, y):
+    return x * (1 - x) * np.cos(4 * np.pi * x) * np.sin(4 * np.pi * y ** 2) ** 2
+
+
+grid_x, grid_y = np.mgrid[0:1:100j, 0:1:200j]
+rng = np.random.default_rng()
+points = rng.random((1000, 2))
+values = func(points[:, 0], points[:, 1])
+print(points.shape, values.shape)  # (1000, 2) (1000,)
+print(grid_x.shape, grid_y.shape)  # (100, 200) (100, 200)
+print((grid_x, grid_y))  # (2, 100, 200)
+
+from scipy.interpolate import griddata
+
+grid_z0 = griddata(points, values, (grid_x, grid_y), method='nearest')
+grid_z1 = griddata(points, values, (grid_x, grid_y), method='linear')
+grid_z2 = griddata(points, values, (grid_x, grid_y), method='cubic')
+import matplotlib.pyplot as plt
+
+plt.subplot(221)
+plt.imshow(func(grid_x, grid_y).T, extent=(0, 1, 0, 1), origin='lower')
+plt.plot(points[:, 0], points[:, 1], 'k.', ms=1)
+plt.title('Original')
+plt.subplot(222)
+plt.imshow(grid_z0.T, extent=(0, 1, 0, 1), origin='lower')
+plt.title('Nearest')
+plt.subplot(223)
+plt.imshow(grid_z1.T, extent=(0, 1, 0, 1), origin='lower')
+plt.title('Linear')
+plt.subplot(224)
+plt.imshow(grid_z2.T, extent=(0, 1, 0, 1), origin='lower')
+plt.title('Cubic')
+plt.gcf().set_size_inches(6, 6)
 plt.show()
-# 对x进行z-score标准化
-x_zscore = stats.zscore(x)
-# 绘制直方图
-plt.hist(x_zscore, bins=50, density=True, alpha=0.6, color='g')
-plt.show()
-
-
-
-
-
