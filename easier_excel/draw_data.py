@@ -412,7 +412,7 @@ def pair_feature_plot(df, kde_hist=True, diag=None, kind=None):  # todo 要在dr
     :param kind: [kde_hist=False时有效]非对角线的图形类型， 可取值为 'scatter', 'kde', 'hist', 'reg'
     :return:
     """
-    sns.set(style="ticks")  # 设置风格为ticks，坐标轴上有刻度
+    sns.set(style="ticks")  # 设置风格为ticks，即：坐标轴上有刻度
     if kde_hist:
         if diag is not None or kind is not None:
             func_w(warning_text='kde_hist=True时，diag和kind参数无效', func=pair_feature_plot, modify_tip='修改为kde_hist=False')

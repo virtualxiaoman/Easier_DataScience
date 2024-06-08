@@ -3,10 +3,14 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 import torch
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.metrics import roc_curve, auc
+import matplotlib.pyplot as plt
 from torch import nn
 from torch.utils import data
 
+
+from easier_tools.Colorful_Console import ColoredText as CT
 
 def load_array(data_arrays, batch_size, is_train=True):
     """
@@ -19,8 +23,109 @@ def load_array(data_arrays, batch_size, is_train=True):
     return data.DataLoader(dataset, batch_size, shuffle=is_train)
 
 
+class Linear:
+    def __init__(self, df):
+        self.df = df
+
+    def cal_linear(self, X_name, y_name, use_bias=True):
+        """
+        线性回归。
+        公式：y = X @ w + b
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param use_bias: bool，是否使用偏置参数。
+        """
+        X = self.df[X_name]
+        y = self.df[y_name].values.reshape(-1, 1)
+        self._cal_linear(X, y, use_bias)
+
+    def cal_logistic(self, X_name, y_name, pos_label=1):
+        """
+        逻辑回归。
+        公式：y = 1 / (1 + exp(-X @ w + b))
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param pos_label: int，正类别标签。
+        """
+        X = self.df[X_name]
+        y = self.df[y_name].values.reshape(-1, )
+        self._cal_logistic(X, y, pos_label)
+
+    @staticmethod
+    def _cal_linear(X, y, use_bias=True):
+        """
+        线性回归
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param use_bias: bool，是否使用偏置参数。
+        :return: None
+        """
+        lin_reg = LinearRegression(fit_intercept=use_bias)
+        lin_reg.fit(X, y)
+        print(CT("线性回归:").blue())
+        print("偏置参数：", lin_reg.intercept_, end="\t")  # b
+        print("权重参数：", lin_reg.coef_)  # w
+
+    @staticmethod
+    def _cal_logistic(X, y, pos_label=1):
+        """
+        逻辑回归
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param pos_label: int，正类别标签。
+        :return: None
+        """
+        log_reg = LogisticRegression()
+        log_reg.fit(X, y)
+
+        print(CT("逻辑回归:").blue())
+        print("偏置参数：", log_reg.intercept_, end="\t")  # b
+        print("权重参数：", log_reg.coef_)  # w
+        print("类别：", log_reg.classes_)  # 类别
+        print("准确率：", log_reg.score(X, y))
+        # print("预测结果：", log_reg.predict(X))
+
+        y_pred_prob = log_reg.predict_proba(X)[:, 1]  # 计算预测概率
+        # 计算ROC曲线和AUC值
+        fpr, tpr, thresholds = roc_curve(y, y_pred_prob, pos_label=pos_label)
+        roc_auc = auc(fpr, tpr)
+        # 绘制ROC曲线
+        plt.figure()
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Receiver Operating Characteristic')
+        plt.legend(loc="lower right")
+        plt.show()
+        print(f"AUC值：{roc_auc:.5f}")
+
+def cal_linear(X, y, use="sklearn", use_bias=True):
+    """
+    [基本弃用，请参考Linear类]
+    计算线性回归的参数θ。
+    :param X:
+    :param y:
+    :param use:
+    :param use_bias:
+    :return:
+    """
+    if use == "formula":
+        X_b = np.c_[np.ones((X.shape[0], 1)), X]
+        theta_best = np.linalg.inv(X_b.T.dot(X_b)).dot(X_b.T).dot(y)  # (X^T @ X)^(-1) @ X^T @ y
+        print("公式计算的θ：", theta_best)
+    elif use == "sklearn":
+        lin_reg = LinearRegression(fit_intercept=use_bias)
+        lin_reg.fit(X, y)
+        print("偏置参数：", lin_reg.intercept_)
+        print("权重参数：", lin_reg.coef_)
+
+
 def cal_skew_kurtosis(data_series):
     """
+    [用的很少，暂时不做修订了]
     计算数据列的偏度、峰度以及正态分布程度检验结果。
     标准正态分布偏度和峰度均为0。如果峰度绝对值小于10并且偏度绝对值小于3，说明数据基本可接受为正态分布。
     1.skew: float，偏度。
@@ -61,6 +166,7 @@ def cal_skew_kurtosis(data_series):
 def cal_net(X_train, y_train, net=None, lr=0.001, batch_size=16, num_epochs=100, use_bias=True, loss_fuc='MSE',
             optim_fun="SGD", show_interval=10):
     """
+    [基本弃用，请参考easier_nn]
     :param X_train:
     :param y_train:
     :param net:
@@ -128,18 +234,6 @@ def cal_net(X_train, y_train, net=None, lr=0.001, batch_size=16, num_epochs=100,
     # print('b1:', b1, '\nb2:None')
 
     return net
-
-
-def cal_linear(X, y, use="sklearn", use_bias=True):
-    if use == "formula":
-        X_b = np.c_[np.ones((X.shape[0], 1)), X]
-        theta_best = np.linalg.inv(X_b.T.dot(X_b)).dot(X_b.T).dot(y)  # (X^T @ X)^(-1) @ X^T @ y
-        print("公式计算的θ：", theta_best)
-    elif use == "sklearn":
-        lin_reg = LinearRegression(fit_intercept=use_bias)
-        lin_reg.fit(X, y)
-        print("偏置参数：", lin_reg.intercept_)
-        print("权重参数：", lin_reg.coef_)
 
 
 

@@ -225,6 +225,7 @@ class desc_df:
                 SimpleImputer: 'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)'。
                 KNNImputer: 'knn'。
                 IterativeImputer: 'rf'。
+              请注意这个不适合于时间序列的数据，时间序列的请使用插值法，比如本文件中的interpolate_data类。
             2.对于其他类型的数据，目前只支持的填充类型有：
                 填充 'nan'，也就是输出时显示NaN（其实还是缺失值~~）
             3.如需删除缺失值请使用：delete_missing_values。
@@ -320,6 +321,7 @@ class desc_df:
         # 异常值的条件是小于下界或者大于上界。outlier_index是一个DataFrame，True表示异常值
         outlier_index = (self.numeric_df < lower_bound) | (self.numeric_df > upper_bound)
 
+        # todo 这里可以变成self属性值保存，然后再输出
         if show_info:
             print(CT("异常值的数量:\n").blue(), self.numeric_df[outlier_index].count())
             print(CT("异常值的比例:\n").blue(), self.numeric_df[outlier_index].count() / self.numeric_df.shape[0])
@@ -437,6 +439,10 @@ class interpolate_data:
             interp = interpolate_data(xx1_data, xx2_data, yy_data)
             interp.interpolate(method=kind, show_plt=False, plt_2d=True)
             y_test = interp.f_predict(0.0032, 0.0004)  # 请注意f_predict的参数数量应该与你的预测维度相同
+          [Warning]:请注意interp1d不允许预测超出已知数据范围的值，如果需要，可以使用拉格朗日插值，也就是method='lagrange'
+        [todo]:
+             1.将draw_data里的函数参数改为**kwargs形式，并修改这里的代码
+             2.对于二维差值，还可以考虑使用griddata函数
         [Tips]:
             1.维度datadims是根据传入的x,y,z自动确定的。不传入z时维度是1，传入z时维度是2。
             2.插值和拟合有一个相同之处，它们都是根据已知数据点，构造函数，从而推断得到更多数据点。
@@ -464,7 +470,6 @@ class interpolate_data:
                        error_text=f"不支持的method格式'{method}'",
                        modify_tip="请检查method是否正确")
             if show_plt:
-                # todo 这里最好改为使用draw_data里的函数，但在此之前最好能够将draw_data里的参数变成**kwargs形式
                 fig, axs = plt.subplots()
                 plt.plot(self.x, self.y, 'or')
                 plt.plot(self.x_predict, self.y_predict, linewidth=1.5)
@@ -512,6 +517,69 @@ class interpolate_data:
         else:
             self.datadims = 2
             # self.y_predict = np.linspace(self.y.min(), self.y.max(), y_predict_nums)
+
+
+class time_data:
+    def __init__(self):
+        """
+        参考Book6_Ch06，Book6_Ch07，Book6_Ch08
+        时间序列的数据没怎么学，这里给出一个简单的时间序列数据的处理方法。
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import pandas_datareader
+        import calendar
+        import seaborn as sns
+        import easier_excel.read_data as read_data
+        # [253 rows x 1 columns]，属性是UNRATENSA
+        df = pandas_datareader.data.DataReader(['UNRATENSA'], data_source='fred', start='08-01-2000', end='08-01-2021')
+        df['UNRATENSA'].plot()
+        plt.show()
+        df['year'] = pd.DatetimeIndex(df.index).year  # 获取年份，DatetimeIndex输入格式是时间序列，输出是年份
+        df['month'] = pd.DatetimeIndex(df.index).month  # 获取月份
+        df['month'] = df['month'].apply(lambda x: calendar.month_abbr[x])  # 将月份转换为英文缩写
+        sns.lineplot(data=df, x="year", y="UNRATENSA", hue="month")
+        plt.show()
+        sns.lineplot(data=df, x="month", y="UNRATENSA", hue="year")
+        plt.show()
+        desc = read_data.desc_df(df)
+        desc.describe_df(stats_detailed=False)
+        print(desc.missing_info)
+        import statsmodels.api as sm
+        # 通过seasonal_decompose函数进行分解，得到res.resid残差、res.trend趋势、res.seasonal季节性、res.observed原始数据
+        res = sm.tsa.seasonal_decompose(df['UNRATENSA'])
+        resplot = res.plot()
+        plt.show()
+
+
+        import plotly.express as px
+        import numpy as np
+        import pandas as pd
+
+        df = px.data.gapminder()
+        df.rename(columns={"country": "country_or_territory"}, inplace=True)
+        print(df.head(5))
+        # 按年份和大洲分组，再对pop列求和
+        df_pop_continent_over_t = df.groupby(['year', 'continent'], as_index=False).agg({'pop': 'sum'})
+        print(df_pop_continent_over_t.head(5))
+        fig = px.bar(df_pop_continent_over_t,
+                     x='year', y='pop',
+                     width=600, height=380,
+                     color='continent',
+                     labels={"year": "Year",
+                             "pop": "Population"})
+        fig.show()
+
+        fig = px.line(df_pop_continent_over_t,
+                      x='year', y='pop',
+                      width=600, height=380,
+                      color='continent',
+                      labels={"year": "Year",
+                              "pop": "Population"})
+        fig.show()
+
+        """
+        pass
+
 
 def read_image(img_path, gray_pic=False, show_details=False):
     """
