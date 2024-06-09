@@ -1,16 +1,21 @@
 import math
+import re
 import numpy as np
 import pandas as pd
-from scipy import stats
-import torch
-from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+from scipy import stats
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.svm import SVC, SVR
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.metrics import roc_curve, auc
+import torch
 from torch import nn
 from torch.utils import data
 
 
 from easier_tools.Colorful_Console import ColoredText as CT
+from easier_tools.Colorful_Console import func_warning as fw
 
 def load_array(data_arrays, batch_size, is_train=True):
     """
@@ -23,9 +28,29 @@ def load_array(data_arrays, batch_size, is_train=True):
     return data.DataLoader(dataset, batch_size, shuffle=is_train)
 
 
-class Linear:
+class CalData:
+    """
+    数据处理类。
+    """
     def __init__(self, df):
         self.df = df
+
+    @staticmethod
+    def has_chinese(text):
+        """
+        判断文本中是否含有中文字符。
+        :param text: str，文本。
+        :return: bool，True表示含有中文字符，False表示不含有中文字符。
+        """
+        pattern = re.compile(r'[\u4e00-\u9fa5]')  # 匹配中文字符的正则表达式
+        return bool(pattern.search(text))
+
+class Linear(CalData):
+    """
+    线性回归、逻辑回归、多项式回归。
+    """
+    def __init__(self, df):
+        super().__init__(df)
 
     def cal_linear(self, X_name, y_name, use_bias=True):
         """
@@ -51,6 +76,25 @@ class Linear:
         y = self.df[y_name].values.reshape(-1, )
         self._cal_logistic(X, y, pos_label)
 
+    def cal_poly(self, X_name, y_name, degree=2, include_linear_bias=False, include_poly_bias=False):
+        """
+        多项式回归。
+        [Tips]:
+            比如X的shape是(8,3), degree=3, include_bias=True，那么X_poly的shape是(8, 20)，其中包含了bias项。具体顺序如下：
+            ['1'
+             'x0' 'x1' 'x2'
+             'x0^2' 'x0 x1' 'x0 x2' 'x1^2' 'x1 x2' 'x2^2'
+             'x0^3' 'x0^2 x1' 'x0^2 x2' 'x0 x1^2' 'x0 x1 x2' 'x0 x2^2' 'x1^3' 'x1^2 x2' 'x1 x2^2' 'x2^3']
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param degree: int，多项式的次数。
+        :param include_linear_bias: bool，是否包含线性偏置参数。
+        :param include_poly_bias: bool，是否包含多项式偏置参数。
+        """
+        X = self.df[X_name]
+        y = self.df[y_name].values.reshape(-1, 1)
+        self._cal_poly(X, y, degree, include_linear_bias, include_poly_bias)
+
     @staticmethod
     def _cal_linear(X, y, use_bias=True):
         """
@@ -63,11 +107,11 @@ class Linear:
         lin_reg = LinearRegression(fit_intercept=use_bias)
         lin_reg.fit(X, y)
         print(CT("线性回归:").blue())
-        print("偏置参数：", lin_reg.intercept_, end="\t")  # b
+        print("偏置参数：", lin_reg.intercept_)  # b
         print("权重参数：", lin_reg.coef_)  # w
 
     @staticmethod
-    def _cal_logistic(X, y, pos_label=1):
+    def _cal_logistic(X, y, pos_label=1, draw_roc=False):
         """
         逻辑回归
         :param X: np.ndarray，输入特征。
@@ -79,7 +123,7 @@ class Linear:
         log_reg.fit(X, y)
 
         print(CT("逻辑回归:").blue())
-        print("偏置参数：", log_reg.intercept_, end="\t")  # b
+        print("偏置参数：", log_reg.intercept_)  # b
         print("权重参数：", log_reg.coef_)  # w
         print("类别：", log_reg.classes_)  # 类别
         print("准确率：", log_reg.score(X, y))
@@ -89,18 +133,189 @@ class Linear:
         # 计算ROC曲线和AUC值
         fpr, tpr, thresholds = roc_curve(y, y_pred_prob, pos_label=pos_label)
         roc_auc = auc(fpr, tpr)
-        # 绘制ROC曲线
-        plt.figure()
-        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
-        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.title('Receiver Operating Characteristic')
-        plt.legend(loc="lower right")
-        plt.show()
+        if draw_roc:
+            # 绘制ROC曲线
+            plt.figure()
+            plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+            plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+            plt.xlim([0.0, 1.0])
+            plt.ylim([0.0, 1.05])
+            plt.xlabel('False Positive Rate')
+            plt.ylabel('True Positive Rate')
+            plt.title('Receiver Operating Characteristic')
+            plt.legend(loc="lower right")
+            plt.show()
         print(f"AUC值：{roc_auc:.5f}")
+
+    @staticmethod
+    def _cal_poly(X, y, degree=2, include_linear_bias=False, include_poly_bias=False):
+        """
+        多项式回归
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param degree: int，多项式的次数。
+        :param include_linear_bias: bool，是否包含线性偏置参数。
+        :param include_poly_bias: bool，是否包含多项式偏置参数。
+        :return: None
+        """
+        poly_features = PolynomialFeatures(degree=degree, include_bias=include_poly_bias)
+        X_poly = poly_features.fit_transform(X)
+        lin_reg = LinearRegression(fit_intercept=include_linear_bias)
+        lin_reg.fit(X_poly, y)
+        print(CT("多项式回归:").blue())
+        print("偏置参数：", lin_reg.intercept_)  # b
+        print("权重参数：", lin_reg.coef_)  # w
+        print("特征名称：", poly_features.get_feature_names_out())
+
+class SVM(CalData):
+    def __init__(self, df):
+        super().__init__(df)
+
+    def cal_svc(self, X_name, y_name, draw_svm=False, **kwargs):
+        """
+        支持向量机
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param draw_svm: bool，是否绘制SVM的支持向量与contourf。
+        :param kwargs: 其他参数。包括：
+            C: Any = 1.0,                         # 惩罚系数，C越大，容错空间越小，模型越复杂
+            kernel: Any = "rbf",                  # 核函数
+            degree: Any = 3,                      # 多项式核函数的次数
+            gamma: Any = "scale",                 # 核函数的系数，scale的意思是1/(n_features * X.var())
+            coef0: Any = 0.0,                     # 核函数的常数项
+            shrinking: Any = True,                # 是否使用启发式
+            probability: Any = False,             # 是否启用概率估计
+            tol: Any = 1e-3,                      # 迭代停止的容忍度
+            cache_size: Any = 200,                # 内核缓存的大小
+            class_weight: Any = None,             # 类别权重
+            verbose: Any = False,                 # 是否启用详细输出
+            max_iter: Any = -1,                   # 最大迭代次数
+            decision_function_shape: Any = "ovr", # 决策函数的形状
+            break_ties: Any = False,              # 是否打破平局
+            random_state: Any = None              # 随机种子
+        """
+        X = self.df[X_name]
+        y = self.df[y_name].values
+        self._cal_svc(X, y, draw_svm, **kwargs)
+
+    def cal_svr(self, X_name, y_name, draw_svr=False, **kwargs):
+        """
+        支持向量回归
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param draw_svr: bool，是否绘制SVR的拟合曲线。
+        :param kwargs: 其他参数。包括：
+             kernel: Any = "rbf",     # 核函数
+             degree: Any = 3,         # 多项式核函数的次数
+             gamma: Any = "scale",    # 核函数的系数，scale的意思是1/(n_features * X.var())
+             coef0: Any = 0.0,        # 核函数的常数项
+             tol: Any = 1e-3,         # 迭代停止的容忍度
+             C: Any = 1.0,            # 惩罚系数
+             epsilon: Any = 0.1,      # 不敏感区间
+             shrinking: Any = True,   # 是否使用启发式
+             cache_size: Any = 200,   # 内核缓存的大小
+             verbose: Any = False,    # 是否启用详细输出
+             max_iter: Any = -1       # 最大迭代次数
+        """
+        X = self.df[X_name]
+        y = self.df[y_name].values
+        self._cal_svr(X, y, draw_svr, **kwargs)
+
+    def _cal_svc(self, X, y, draw_svm, **kwargs):
+        """
+        支持向量机
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param draw_svm: bool，是否绘制SVM的支持向量与contourf。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        model = SVC(**kwargs)
+        model.fit(X, y)
+        print(CT("支持向量机-分类:").blue())
+        # print("支持向量：", model.support_vectors_)
+        # print("支持向量的索引：", model.support_)
+        print("支持向量的个数：", model.n_support_)
+        # 如果是线性核函数，可以输出权重参数
+        if model.kernel == "linear":
+            print("权重参数：", model.coef_)
+        print("偏置参数：", model.intercept_)
+        print("类别：", model.classes_)
+        print("准确率：", model.score(X, y))
+        if draw_svm:
+            # 绘制SVM
+            if X.shape[1] > 2:
+                fw(self._cal_svc, "X的维度大于2，无法绘制SVM-Classification")
+                return None
+            plt.figure(figsize=(10, 6))
+            ax = plt.subplot(1, 1, 1)
+            # 1.绘制等高线填充图
+            padding = 0.1  # 设置边界范围的扩展比例
+            X0_min, X0_max = X.iloc[:, 0].min(), X.iloc[:, 0].max()
+            X1_min, X1_max = X.iloc[:, 1].min(), X.iloc[:, 1].max()
+            x_min, x_max = X0_min - padding * (X0_max - X0_min), X0_max + padding * (X0_max - X0_min)
+            y_min, y_max = X1_min - padding * (X1_max - X1_min), X1_max + padding * (X1_max - X1_min)
+            # xx.shape=(100, 100)，yy.shape=(100, 100)
+            xx, yy = np.meshgrid(np.linspace(x_min, x_max, 100), np.linspace(y_min, y_max, 100))
+            # np.c_[xx.ravel(), yy.ravel()]将shape=(100, 100)转换为shape=(10000, 2)
+            Z_contourf = model.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+            plt.contourf(xx, yy, Z_contourf, cmap=ListedColormap(['#FF1493', '#66ccff']), alpha=0.5)
+            # 2.绘制决策边界
+            xy = np.vstack([xx.ravel(), yy.ravel()]).T
+            Z_contour = model.decision_function(xy).reshape(xx.shape)
+            ax.contour(xx, yy, Z_contour, colors='k', levels=[-1, 0, 1], alpha=0.8, linestyles=['--', '-', '--'])
+            # 3.绘制散点图
+            ax.scatter(X.iloc[:, 0], X.iloc[:, 1], c=y, cmap=ListedColormap(['#FF0000', '#0000FF']), edgecolors='k')
+            # 4.绘制支持向量
+            sv = model.support_vectors_
+            plt.scatter(sv[:, 0], sv[:, 1], s=100, linewidth=1, facecolors='none', edgecolors='k')
+            plt.title("SVM Classification")
+            if hasattr(X, "columns"):
+                plt.xlabel(X.columns[0])
+                plt.ylabel(X.columns[1])
+                # 如果含有中文，设置字体为宋体
+                if self.has_chinese(X.columns[0]):
+                    plt.xlabel(X.columns[0], fontproperties='SimSun')
+                if self.has_chinese(X.columns[1]):
+                    plt.ylabel(X.columns[1], fontproperties='SimSun')
+            else:
+                plt.xlabel("Feature 1")
+                plt.ylabel("Feature 2")
+            plt.show()
+            plt.close()
+
+    def _cal_svr(self, X, y, draw_svr, **kwargs):
+        """
+        支持向量回归
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param draw_svr: bool，是否绘制SVR的拟合曲线。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        model = SVR(**kwargs)
+        model.fit(X, y)
+        print(CT("支持向量机-回归:").blue())
+        # print("支持向量：", model.support_vectors_)
+        # print("支持向量的索引：", model.support_)
+        print("支持向量的个数：", model.n_support_)
+        # 如果是线性核函数，可以输出权重参数
+        if model.kernel == "linear":
+            print("权重参数：", model.coef_)
+        print("偏置参数：", model.intercept_)
+        print("R^2分数：", model.score(X, y))  # R^2分数越接近1，表示模型拟合得越好
+        if draw_svr:
+            # 绘制SVR的拟合曲线
+            # 如果X超过了一维，就只绘制第一个特征
+            if X.shape[1] > 1:
+                fw(self._cal_svr, "X的维度大于1，无法绘制SVM-Regression")
+                return None
+            plt.scatter(X, y, c='b')
+            plt.plot(X, model.predict(X), c='r', label='SVR')
+            plt.legend()
+            plt.show()
+            plt.close()
+
 
 def cal_linear(X, y, use="sklearn", use_bias=True):
     """

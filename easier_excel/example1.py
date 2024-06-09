@@ -34,9 +34,21 @@ print(desc_df.df.iloc[48:49])  # (第48行)荒泷一斗的防御力为异常值
 print("----------数据处理(回归)----------")
 cal_df = cd.Linear(df)
 cal_df.cal_linear(["星级", "生命值", "攻击力", "防御力"], '模')
-cal_df.cal_logistic(["生命值", "攻击力", "防御力"], '星级', pos_label=5)
+# 在逻辑回归的ROC曲线里，(1, 1)处的值在y=x之下，可能是因为荧虽然被定为Positive（五星），但是基础数据太低了，所以模型给预测成Negative了
+cal_df.cal_logistic(["生命值", "攻击力", "防御力"], '星级', pos_label=5)  # pos_label=5表示星级为5的为正类别
+cal_df.cal_poly(["星级", "生命值", "攻击力", "防御力"], '模', degree=2, include_linear_bias=True, include_poly_bias=True)  # 二次多项式回归
 
-exit(1)
+print("----------数据处理(SVM)----------")
+cal_df = cd.SVM(df)
+# 下面两个的属性都不符合绘图的要求，所以不绘图，因此不要设置draw_svr=True和draw_svm=True
+cal_df.cal_svr(["星级", "生命值", "攻击力", "防御力"], '模', draw_svr=True, kernel='linear')
+cal_df.cal_svc(["生命值", "攻击力", "防御力"], '星级', draw_svm=True, kernel='linear')
+# 下面是为了演示绘图的，效果并不好
+cal_df.cal_svr(["生命值"], '模', draw_svr=True, kernel='linear')
+cal_df.cal_svc(["生命值", "攻击力"], '星级', draw_svm=True, kernel='poly')
+
+
+exit(111)
 print("----------数据分析(绘图)----------")  # 绘图部分代码正在重构中
 df_main = df[['星级', '生命值', '攻击力', '防御力']].copy()
 draw_df = dd.draw_df(df_main)

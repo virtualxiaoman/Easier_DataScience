@@ -177,3 +177,11 @@
 #               labels={"year": "Year",
 #                       "pop": "Population"})
 # fig.show()
+import numpy as np
+from sklearn.preprocessing import PolynomialFeatures
+X = np.arange(24).reshape(8, 3)
+print(X)
+poly = PolynomialFeatures(3)
+print(poly.fit_transform(X))
+print(poly.fit_transform(X).shape)
+print(poly.get_feature_names_out())

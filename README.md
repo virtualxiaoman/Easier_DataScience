@@ -27,7 +27,7 @@ trial_models: 是一些机器学习算法的应用尝试或手动实现
 .
 ├── easier_excel                # [·] 用机器学习处理表格类型的数据
 │   ├── __init__.py             # [√] init
-│   ├── cal_data.py             # [×] 计算数据的统计量
+│   ├── cal_data.py             # [·] 更轻松地调用机器学习的包
 │   ├── draw_data.py            # [🈵] 绘图
 │   └── math_formula.py         # [·] 计算积分，导数，求解最优化问题等
 │   └── read_data.py            # [🈵] 读取、描述、预处理数据
@@ -57,9 +57,11 @@ trial_models: 是一些机器学习算法的应用尝试或手动实现
 |
 ├── trial_models                # [·] 一些机器学习算法的应用尝试或手动实现
 │   ├── Cellular_Automations.py # [×] 元胞自动机
+│   ├── FM.py                   # [√] 因子分解机
+│   ├── MF.py                   # [√] 矩阵分解
 │   ├── KNN.py                  # [√] KNN算法
 │   ├── useful_eig.py           # [√] 特征值分解
-│   └── useful_SVD.py           # [√] SVD分解
+│   ├── useful_SVD.py           # [√] SVD分解
 ```
 
 我个人比较喜欢`easier_excel`和`trial_models`，其余的有空了然后写写。
