@@ -9,6 +9,7 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC, SVR
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.metrics import roc_curve, auc
+from sklearn import tree
 import torch
 from torch import nn
 from torch.utils import data
@@ -171,12 +172,12 @@ class SVM(CalData):
     def __init__(self, df):
         super().__init__(df)
 
-    def cal_svc(self, X_name, y_name, draw_svm=False, **kwargs):
+    def cal_svc(self, X_name, y_name, draw_svc=False, **kwargs):
         """
         支持向量机
         :param X_name: str或list，输入特征的列名。
         :param y_name: str，输出标签的列名。
-        :param draw_svm: bool，是否绘制SVM的支持向量与contourf。
+        :param draw_svc: bool，是否绘制SVM的支持向量与contourf。
         :param kwargs: 其他参数。包括：
             C: Any = 1.0,                         # 惩罚系数，C越大，容错空间越小，模型越复杂
             kernel: Any = "rbf",                  # 核函数
@@ -195,8 +196,8 @@ class SVM(CalData):
             random_state: Any = None              # 随机种子
         """
         X = self.df[X_name]
-        y = self.df[y_name].values
-        self._cal_svc(X, y, draw_svm, **kwargs)
+        y = pd.Series(self.df[y_name], name=y_name)  # 我也不知道为什么不指定name就没name了，不过也只影响绘图
+        self._cal_svc(X, y, draw_svc, **kwargs)
 
     def cal_svr(self, X_name, y_name, draw_svr=False, **kwargs):
         """
@@ -218,15 +219,15 @@ class SVM(CalData):
              max_iter: Any = -1       # 最大迭代次数
         """
         X = self.df[X_name]
-        y = self.df[y_name].values
+        y = pd.Series(self.df[y_name], name=y_name)  # 我也不知道为什么不指定name就没name了，不过也只影响绘图
         self._cal_svr(X, y, draw_svr, **kwargs)
 
-    def _cal_svc(self, X, y, draw_svm, **kwargs):
+    def _cal_svc(self, X, y, draw_svc, **kwargs):
         """
         支持向量机
         :param X: np.ndarray，输入特征。
         :param y: np.ndarray，输出标签。
-        :param draw_svm: bool，是否绘制SVM的支持向量与contourf。
+        :param draw_svc: bool，是否绘制SVM的支持向量与contourf。
         :param kwargs: 其他参数。
         :return: None
         """
@@ -242,7 +243,7 @@ class SVM(CalData):
         print("偏置参数：", model.intercept_)
         print("类别：", model.classes_)
         print("准确率：", model.score(X, y))
-        if draw_svm:
+        if draw_svc:
             # 绘制SVM
             if X.shape[1] > 2:
                 fw(self._cal_svc, "X的维度大于2，无法绘制SVM-Classification")
@@ -271,13 +272,15 @@ class SVM(CalData):
             plt.scatter(sv[:, 0], sv[:, 1], s=100, linewidth=1, facecolors='none', edgecolors='k')
             plt.title("SVM Classification")
             if hasattr(X, "columns"):
-                plt.xlabel(X.columns[0])
-                plt.ylabel(X.columns[1])
                 # 如果含有中文，设置字体为宋体
                 if self.has_chinese(X.columns[0]):
                     plt.xlabel(X.columns[0], fontproperties='SimSun')
+                else:
+                    plt.xlabel(X.columns[0])
                 if self.has_chinese(X.columns[1]):
                     plt.ylabel(X.columns[1], fontproperties='SimSun')
+                else:
+                    plt.ylabel(X.columns[1])
             else:
                 plt.xlabel("Feature 1")
                 plt.ylabel("Feature 2")
@@ -312,7 +315,73 @@ class SVM(CalData):
                 return None
             plt.scatter(X, y, c='b')
             plt.plot(X, model.predict(X), c='r', label='SVR')
+            plt.title("SVR Regression")
+            if hasattr(X, "columns"):
+                if self.has_chinese(X.columns[0]):
+                    plt.xlabel(X.columns[0], fontproperties='SimSun')
+                else:
+                    plt.xlabel(X.columns[0])
+            if hasattr(y, "name"):
+                if self.has_chinese(y.name):
+                    plt.ylabel(y.name, fontproperties='SimSun')
+                else:
+                    plt.ylabel(y.name)
             plt.legend()
+            plt.show()
+            plt.close()
+
+
+class Tree(CalData):
+    def __init__(self, df):
+        super().__init__(df)
+
+    def cal_tree(self, X_name, y_name, draw_tree=False, **kwargs):
+        """
+        决策树
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param draw_tree: bool，是否绘制决策树。
+        :param kwargs: 其他参数。包括：
+            criterion: Any = "gini",              # 选择特征的标准，包括{"gini", "entropy", "log_loss"}，对应CART、C4.5
+            splitter: Any = "best",               # 选择分裂节点的策略，包括{"best", "random"}
+            max_depth: Any = None,                # 树的最大深度
+            min_samples_split: Any = 2,           # 内部节点再划分所需最小样本数
+            min_samples_leaf: Any = 1,            # 叶子节点最少样本数
+            min_weight_fraction_leaf: Any = 0.0,  # 叶子节点的样本权重和的最小加权分数
+            max_features: Any = None,             # 每次分裂的最大特征数
+            random_state: Any = None,             # 随机种子
+            max_leaf_nodes: Any = None,           # 最大叶子节点数
+            min_impurity_decrease: Any = 0.0,     # 分裂节点的最小不纯度
+            class_weight: Any = None,             # 类别权重
+        """
+        X = self.df[X_name]
+        y = self.df[y_name].values
+        self._cal_tree(X, y, draw_tree, **kwargs)
+
+    def _cal_tree(self, X, y, draw_tree, **kwargs):
+        """
+        决策树
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param draw_tree: bool，是否绘制决策树。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        model = tree.DecisionTreeClassifier(**kwargs)
+        model.fit(X, y)
+        print(CT("决策树:").blue())
+        print("特征重要性：", model.feature_importances_)
+        print("准确率：", model.score(X, y))
+        if draw_tree:
+            # 绘制决策树
+            plt.figure(figsize=(10, 6))
+            # 如果X.columns.tolist()有中文，就设置字体是宋体
+            if hasattr(X, "columns"):
+                for col in X.columns:
+                    if self.has_chinese(col):
+                        plt.rcParams['font.sans-serif'] = ['SimSun']
+                        break
+            tree.plot_tree(model, filled=True, feature_names=X.columns.tolist(), class_names=[str(i) for i in model.classes_])
             plt.show()
             plt.close()
 

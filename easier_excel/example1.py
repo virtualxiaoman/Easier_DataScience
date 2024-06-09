@@ -40,13 +40,17 @@ cal_df.cal_poly(["星级", "生命值", "攻击力", "防御力"], '模', degree
 
 print("----------数据处理(SVM)----------")
 cal_df = cd.SVM(df)
-# 下面两个的属性都不符合绘图的要求，所以不绘图，因此不要设置draw_svr=True和draw_svm=True
-cal_df.cal_svr(["星级", "生命值", "攻击力", "防御力"], '模', draw_svr=True, kernel='linear')
-cal_df.cal_svc(["生命值", "攻击力", "防御力"], '星级', draw_svm=True, kernel='linear')
-# 下面是为了演示绘图的，效果并不好
+# 下面两个的属性都不符合绘图的要求，所以不绘图，因此不要设置draw_svr=True
+cal_df.cal_svr(["星级", "生命值", "攻击力", "防御力"], '模', draw_svr=False, kernel='linear')
+cal_df.cal_svc(["生命值", "攻击力", "防御力"], '星级', draw_svc=False, kernel='linear')
+# 下面是为了演示绘图的，效果并不好(运行时请改为draw_svr=True)
 cal_df.cal_svr(["生命值"], '模', draw_svr=True, kernel='linear')
-cal_df.cal_svc(["生命值", "攻击力"], '星级', draw_svm=True, kernel='poly')
+cal_df.cal_svc(["生命值", "攻击力"], '星级', draw_svc=True, kernel='poly')
 
+print("----------数据处理(决策树)----------")
+cal_df = cd.Tree(df)
+cal_df.cal_tree(["生命值", "攻击力", "防御力"], '星级', criterion='entropy', draw_tree=True)
+cal_df.cal_tree(["生命值", "攻击力", "防御力"], '星级', criterion='gini', draw_tree=True)
 
 exit(111)
 print("----------数据分析(绘图)----------")  # 绘图部分代码正在重构中
