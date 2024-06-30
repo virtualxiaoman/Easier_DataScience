@@ -1,3 +1,7 @@
+# CopyRight: virtual小满
+# 数据集：《原神》角色数据，截止留云。由本人手动录入，数据版权归《原神》所有。
+# 本代码仅作为演示各个功能，其数据分析结果并不具有参考价值。
+
 from sklearn.cluster import KMeans
 import easier_excel.read_data as rd
 import easier_excel.draw_data as dd

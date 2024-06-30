@@ -11,6 +11,7 @@ from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import PowerTransformer
 
+from easier_excel.utils import DFUtils
 from easier_tools.Colorful_Console import func_warning as func_w
 from easier_tools.Colorful_Console import func_error as func_e
 from easier_tools.Colorful_Console import ColoredText as CT
@@ -68,30 +69,15 @@ def read_df(path):
     return df
 
 
-class desc_df:
+class desc_df(DFUtils):
     def __init__(self, df):
         """
         初始化
         :param df: 可以传入df或者df.copy()
         """
-        self.df = df  # 传入的df数据
-        self.shape = None  # df大小
-        self.columns = None  # df属性
-        self.dtypes = None  # 数据类型
+        super().__init__(df)
         self.numeric_stats = None  # 数据描述
         self.missing_info = None  # 缺失值信息
-
-        self.numeric_df = self.df.select_dtypes(include=['number'])  # 数值型数据
-        self.non_numeric_df = self.df.select_dtypes(exclude=['number'])  # 非数值型数据
-
-    def get_df(self):
-        """
-        如果在初始化这个类desc_df的时候传入的是df.copy()，那就不会对原来的df进行更改。
-        此时如果需要获得更改后的df，请使用这个函数吧！
-        [Tips]:
-            该函数不如直接使用.df，这里只是为了免得以前的代码寄了，所以保留了这个函数
-        """
-        return self.df
 
     def show_df(self, head_n=0, tail_n=0, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False):
         """
@@ -253,11 +239,10 @@ class desc_df:
                    warning_text=f"不支持的fill_type格式'{fill_type}'，这里默认采用0填充，如有需要，请自行更改为正确的格式",
                    modify_tip="请检查fill_type是否正确")
             imputer = SimpleImputer(strategy='constant', fill_value=0)  # 默认采用0填充
-        filled_numeric_df = pd.DataFrame(imputer.fit_transform(self.numeric_df), columns=self.numeric_df.columns)
+        filled_numeric_df = pd.DataFrame(imputer.fit_transform(self.df_numeric), columns=self.df_numeric.columns)
 
         # 处理非数值型数据
-        self.non_numeric_df = self.df.select_dtypes(exclude=['number'])
-        filled_non_numeric_df = self.non_numeric_df.fillna(float('nan'))  # NaN填充
+        filled_non_numeric_df = self.df_non_numeric.fillna(float('nan'))  # NaN填充
 
         # 合并
         self.df = pd.concat([filled_numeric_df, filled_non_numeric_df], axis=1)
@@ -302,36 +287,36 @@ class desc_df:
                    modify_tip="请检查method是否正确")
             method = 'IQR'
         if method == 'IQR':
-            Q1 = self.numeric_df.quantile(0.25)  # 返回的是一个Series
-            Q3 = self.numeric_df.quantile(0.75)
+            Q1 = self.df_numeric.quantile(0.25)  # 返回的是一个Series
+            Q3 = self.df_numeric.quantile(0.75)
             IQR = Q3 - Q1
             lower_bound = Q1 - 1.5 * IQR
             upper_bound = Q3 + 1.5 * IQR
         elif method == 'Z-score':
             threshold = 3
-            Z_scores = np.abs((self.numeric_df - self.numeric_df.mean()) / self.numeric_df.std())  # 返回的是一个DataFrame
+            Z_scores = np.abs((self.df_numeric - self.df_numeric.mean()) / self.df_numeric.std())  # 返回的是一个DataFrame
             # 返回的是一个布尔值的DataFrame，True表示异常值
             outliers = Z_scores > threshold
             # 返回的是一个Series，~是取反，mask是将不满足条件的值替换为NaN，然后取最小值，即最小的正常值
-            lower_bound = self.numeric_df.mask(~outliers).min()
-            upper_bound = self.numeric_df.mask(~outliers).max()  # 返回的是一个Series，即最大的正常值
+            lower_bound = self.df_numeric.mask(~outliers).min()
+            upper_bound = self.df_numeric.mask(~outliers).max()  # 返回的是一个Series，即最大的正常值
         else:
             pass
 
         # 异常值的条件是小于下界或者大于上界。outlier_index是一个DataFrame，True表示异常值
-        outlier_index = (self.numeric_df < lower_bound) | (self.numeric_df > upper_bound)
+        outlier_index = (self.df_numeric < lower_bound) | (self.df_numeric > upper_bound)
 
         # todo 这里可以变成self属性值保存，然后再输出
         if show_info:
-            print(CT("异常值的数量:\n").blue(), self.numeric_df[outlier_index].count())
-            print(CT("异常值的比例:\n").blue(), self.numeric_df[outlier_index].count() / self.numeric_df.shape[0])
+            print(CT("异常值的数量:\n").blue(), self.df_numeric[outlier_index].count())
+            print(CT("异常值的比例:\n").blue(), self.df_numeric[outlier_index].count() / self.df_numeric.shape[0])
             # 输出outlier_index为True的坐标
             print(CT("异常值的坐标:\n").blue(), np.where(outlier_index))
 
         if process_type == 'delete':
-            self.numeric_df = self.numeric_df[~outlier_index]
+            self.df_numeric = self.df_numeric[~outlier_index]
         elif process_type == 'fill':
-            self.numeric_df[outlier_index] = np.nan
+            self.df_numeric[outlier_index] = np.nan
         elif process_type == 'ignore':
             pass
         else:
@@ -339,10 +324,9 @@ class desc_df:
                    warning_text=f"不支持的process_type格式'{process_type}'，这里默认不做修改，也就是ignore",
                    modify_tip="请检查process_type是否正确")
 
-        # 处理非数值型数据
-        self.non_numeric_df = self.df.select_dtypes(exclude=['number'])
+        # 处理非数值型数据(这里不做处理)
         # 合并
-        self.df = pd.concat([self.numeric_df, self.non_numeric_df], axis=1)
+        self.df = pd.concat([self.df_numeric, self.df_non_numeric], axis=1)
 
         # 下面这一行是为了更新self.missing_info，便于在外部调用fill_missing_values后能直接查看修改后的self.missing_info的值
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
@@ -360,19 +344,19 @@ class desc_df:
             2.归一化normalization: 将数据缩放到[0,1]或[-1,1]的区间上。，可以使得不同特征的权重相同，
             避免某些特征对模型的影响过大，从而提高模型的准确性和泛化能力。归一化可使所有特征具有相似的尺度。
         """
-        self.demeaned_df = self.numeric_df - self.numeric_df.mean()
-        self.zscore_df = (self.numeric_df - self.numeric_df.mean()) / self.numeric_df.std()
-        self.minmax_df = (minmax[1] - minmax[0]) * (self.numeric_df - self.numeric_df.min()) / \
-                         (self.numeric_df.max() - self.numeric_df.min()) + minmax[0]
-        if (self.numeric_df < 0).any().any():
+        self.demeaned_df = self.df_numeric - self.df_numeric.mean()
+        self.zscore_df = (self.df_numeric - self.df_numeric.mean()) / self.df_numeric.std()
+        self.minmax_df = (minmax[1] - minmax[0]) * (self.df_numeric - self.df_numeric.min()) / \
+                         (self.df_numeric.max() - self.df_numeric.min()) + minmax[0]
+        if (self.df_numeric < 0).any().any():
             func_w(self.transform_df,
                    warning_text="数据中有负数项，无法进行boxcox",
                    modify_tip="请检查数据是否有负数项")
         else:
             pt = PowerTransformer(method='box-cox')
-            self.boxcox_df = pt.fit_transform(self.numeric_df)
+            self.boxcox_df = pt.fit_transform(self.df_numeric)
         pt = PowerTransformer(method='yeo-johnson')
-        self.yeojohnson_df = pt.fit_transform(self.numeric_df)
+        self.yeojohnson_df = pt.fit_transform(self.df_numeric)
 
 
 # 一些可能的读入方法以作为记录
