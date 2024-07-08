@@ -192,7 +192,7 @@ if __name__ == '__main__':
         return photo
 
 
-    path = 'input/KNN_style_transfer'
+    path = '../input/KNN_style_transfer'
     # block_size表示向外扩展的层数，扩展1层即3*3
     block_size = 1
     X, Y = read_style_image(os.path.join(path, 'style.jpg'), size=block_size)  # 建立映射

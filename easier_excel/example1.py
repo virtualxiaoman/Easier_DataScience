@@ -1,16 +1,18 @@
 # CopyRight: virtual小满
 # 数据集：《原神》角色数据，截止留云。由本人手动录入，数据版权归《原神》所有。
-# 本代码仅作为演示各个功能，其数据分析结果并不具有参考价值。
-
+# 本代码仅为了演示easier_excel的各个功能，其数据分析结果并不具有参考价值。
+# 为了尽可能简便，甚至没有划分训练集和测试集，而是直接对全数据进行了处理与分析
+# 数据集中的“模”这一列是妮可少女给出的，计算公式是: 模 = HP + 16*ATK + 10*DEF，其余数据均为游戏内数据。
+import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
-import easier_excel.read_data as rd
+import easier_excel.read_data as rd  # 这里是历史遗留问题，一般还是建议使用from easier_excel import read_data这样写，不然容易意义不明
 import easier_excel.draw_data as dd
 import easier_excel.cal_data as cd
 
-rd.set_pd_option(max_show=True, float_type=True, decimal_places=2)
+rd.set_pd_option(max_show=True, float_type=True, decimal_places=4)  # 设置pandas显示选项
 
 path = '../input/CharacterData.xlsx'
-df = rd.read_df(path)
+df = rd.read_df(path)  # 读取数据
 
 print("----------读取数据信息----------")
 desc_df = rd.desc_df(df)
@@ -38,18 +40,22 @@ print(desc_df.df.iloc[48:49])  # (第48行)荒泷一斗的防御力为异常值
 print("----------数据处理(回归)----------")
 cal_df = cd.Linear(df)
 cal_df.cal_linear(["星级", "生命值", "攻击力", "防御力"], '模')
+print(cal_df.weight)
+print(cal_df.MSE)  # 还可以去查看其他的属性值，这里不做展示了
+# dd.draw_density(cal_df.residuals)  # 残差密度图
 # 在逻辑回归的ROC曲线里，(1, 1)处的值在y=x之下，可能是因为荧虽然被定为Positive（五星），但是基础数据太低了，所以模型给预测成Negative了
 cal_df.cal_logistic(["生命值", "攻击力", "防御力"], '星级', pos_label=5)  # pos_label=5表示星级为5的为正类别
 cal_df.cal_poly(["星级", "生命值", "攻击力", "防御力"], '模', degree=2, include_linear_bias=True, include_poly_bias=True)  # 二次多项式回归
+print(cal_df.weight)
 
 print("----------数据处理(SVM)----------")
 cal_df = cd.SVM(df)
 # 下面两个的属性都不符合绘图的要求，所以不绘图，因此不要设置draw_svr=True
 cal_df.cal_svr(["星级", "生命值", "攻击力", "防御力"], '模', draw_svr=False, kernel='linear')
 cal_df.cal_svc(["生命值", "攻击力", "防御力"], '星级', draw_svc=False, kernel='linear')
-# 下面是为了演示绘图的，效果并不好(运行时请改为draw_svr=True)
-cal_df.cal_svr(["生命值"], '模', draw_svr=True, kernel='linear')
-cal_df.cal_svc(["生命值", "攻击力"], '星级', draw_svc=True, kernel='poly')
+# # 下面是为了演示绘图的，效果并不好
+# cal_df.cal_svr(["生命值"], '模', draw_svr=True, kernel='linear')
+# cal_df.cal_svc(["生命值", "攻击力"], '星级', draw_svc=True, kernel='poly')
 
 print("----------数据处理(决策树)----------")
 cal_df = cd.Tree(df)
@@ -76,6 +82,8 @@ df_feature = df_main.copy().drop(columns=['星级'])
 kmeans_c2 = KMeans(n_clusters=2, n_init=10)
 kmeans_c2.fit(df_feature)
 centers = kmeans_c2.cluster_centers_
+predictions = kmeans_c2.predict(df_feature)
+plt.scatter(df_feature['生命值'], df_feature['攻击力'], c=predictions, s=50, cmap='viridis')  # 指定c=predictions就可以根据聚类结果着色
 print("聚类中心：", centers)  # [[10417.12217391   236.39369565   653.4026087 ] [13148.92261905   257.995        744.7802381 ]]
 
 

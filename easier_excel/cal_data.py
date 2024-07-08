@@ -2,14 +2,23 @@ import math
 import re
 import numpy as np
 import pandas as pd
+
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
+
 from scipy import stats
+from scipy.stats import shapiro, kstest, normaltest, anderson
+
+import statsmodels.api as sm
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+from statsmodels.stats.diagnostic import het_breuschpagan
+
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC, SVR
 from sklearn.preprocessing import PolynomialFeatures
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, classification_report, matthews_corrcoef
 from sklearn import tree
+
 import torch
 from torch import nn
 from torch.utils import data
@@ -52,14 +61,44 @@ class Linear(CalData):
     """
     def __init__(self, df):
         super().__init__(df)
+        # 模型
+        self.lin_reg = None  # 线性回归模型
+
+        # 预测
+        self.y_pred = None  # 预测值，np.ndarray类型
+
+        # 统计量
+        self.weight = None  # 权重参数，DataFrame类型
+        self.MAE = None  # 平均绝对误差MAE，float类型
+        self.MSE = None  # 均方误差MSE，float类型
+        self.RMSE = None  # 均方根误差RMSE，float类型
+        self.residuals = None  # 残差residuals，np.ndarray类型
+        self.AUC = None  # ROC曲线下的面积AUC，float类型
+        self.R_squared = None  # R^2分数，float类型
+        self.adjusted_R_squared = None  # 调整后的R^2分数，float类型
+        self.MCC = None  # Matthews相关系数MCC，float类型
+
+        # 检验参数
+        self.VIF = None  # 变量膨胀因子VIF，DataFrame类型
+        self.breusch_pagan_pvalue = None  # Breusch-Pagan检验的p值，float类型
+        self.shapiro_pvalue = None  # Shapiro-Wilk检验的p值，float类型
+        self.dagostino_pvalue = None  # D'Agostino's K² P值，float类型
+        self.durbin_watson_statistic = None  # Durbin-Watson统计量，float类型
 
     def cal_linear(self, X_name, y_name, use_bias=True):
         """
         线性回归。
         公式：y = X @ w + b
+        假设：
+          无异常值(要求在使用cal_linear之前已经处理了异常值，这里不会处理异常值)
+          线性(X,Y的关系是线性的)，
+          同方差(误差项的方差不随X的不同而变化)，
+          正态(在任何固定的X值下，残差应该呈正态分布，且均值为0)，
+          无自相关(残差不应随时间或其他自变量的顺序发生系统性变化。如时间序列，残差不应随着时间推移表现出某种趋势)，
+          无多重共线性(多个自变量之间不应存在线性关系，否则会导致模型系数不稳定，难以确定哪个变量在预测因变量中起主要作用)。
         :param X_name: str或list，输入特征的列名。
         :param y_name: str，输出标签的列名。
-        :param use_bias: bool，是否使用偏置参数。
+        :param use_bias: bool，是否使用偏置参数b。
         """
         X = self.df[X_name]
         y = self.df[y_name].values.reshape(-1, 1)
@@ -86,6 +125,12 @@ class Linear(CalData):
              'x0' 'x1' 'x2'
              'x0^2' 'x0 x1' 'x0 x2' 'x1^2' 'x1 x2' 'x2^2'
              'x0^3' 'x0^2 x1' 'x0^2 x2' 'x0 x1^2' 'x0 x1 x2' 'x0 x2^2' 'x1^3' 'x1^2 x2' 'x1 x2^2' 'x2^3']
+             你可以通过以下代码验证：
+                X = np.arange(24).reshape(8, 3)
+                poly = PolynomialFeatures(3)
+                print(poly.fit_transform(X))  # 进行多项式特征转换
+                print(poly.fit_transform(X).shape)  # shape
+                print(poly.get_feature_names_out())  # 转换后的特征名称
         :param X_name: str或list，输入特征的列名。
         :param y_name: str，输出标签的列名。
         :param degree: int，多项式的次数。
@@ -96,8 +141,7 @@ class Linear(CalData):
         y = self.df[y_name].values.reshape(-1, 1)
         self._cal_poly(X, y, degree, include_linear_bias, include_poly_bias)
 
-    @staticmethod
-    def _cal_linear(X, y, use_bias=True):
+    def _cal_linear(self, X, y, use_bias=True):
         """
         线性回归
         :param X: np.ndarray，输入特征。
@@ -105,14 +149,37 @@ class Linear(CalData):
         :param use_bias: bool，是否使用偏置参数。
         :return: None
         """
-        lin_reg = LinearRegression(fit_intercept=use_bias)
-        lin_reg.fit(X, y)
+        # 线性回归的fit部分
+        self.lin_reg = LinearRegression(fit_intercept=use_bias)
+        self.lin_reg.fit(X, y)
         print(CT("线性回归:").blue())
-        print("偏置参数：", lin_reg.intercept_)  # b
-        print("权重参数：", lin_reg.coef_)  # w
+        print("偏置参数：", self.lin_reg.intercept_)  # b
+        print("权重参数：", self.lin_reg.coef_)  # w
+        self.y_pred = self.lin_reg.predict(X)  # 预测值
 
-    @staticmethod
-    def _cal_logistic(X, y, pos_label=1, draw_roc=False):
+        # 得到权重的DataFrame
+        self.weight = pd.DataFrame({"feature": X.columns, "weight": self.lin_reg.coef_[0]})
+        bias_df = pd.DataFrame({"feature": ["bias"], "weight": self.lin_reg.intercept_})
+        self.weight = pd.concat([bias_df, self.weight], ignore_index=True)
+
+        # 计算部分统计量
+        self.residuals = y - self.y_pred
+        self.MAE = np.mean(np.abs(self.residuals))
+        self.MSE = np.mean(self.residuals ** 2)
+        self.RMSE = math.sqrt(self.MSE)
+
+        # 线性：计算R²和调整后的R²
+        self.__check_linearity(X, y, self.lin_reg)
+        # 同方差性: 使用Breusch-Pagan检验
+        self.__check_homoscedasticity(X, y)
+        # 正态性: 使用Shapiro-Wilk检验和Kolmogorov-Smirnov检验
+        self.__check_normality(self.residuals)
+        # 自相关性: 使用Durbin-Watson检验
+        self.__check_autocorrelation(self.residuals)
+        # 多重共线性: 使用VIF检测
+        self.__check_multicollinearity(X, use_bias)
+
+    def _cal_logistic(self, X, y, pos_label=1, draw_roc=False):
         """
         逻辑回归
         :param X: np.ndarray，输入特征。
@@ -128,16 +195,20 @@ class Linear(CalData):
         print("权重参数：", log_reg.coef_)  # w
         print("类别：", log_reg.classes_)  # 类别
         print("准确率：", log_reg.score(X, y))
-        # print("预测结果：", log_reg.predict(X))
+        self.y_pred = log_reg.predict(X)  # 预测值
+        print(classification_report(y, self.y_pred))  # 分类报告
+
+        self.residuals = y - self.y_pred
+        self.MCC = matthews_corrcoef(y, self.y_pred)  # 计算MCC值
 
         y_pred_prob = log_reg.predict_proba(X)[:, 1]  # 计算预测概率
         # 计算ROC曲线和AUC值
         fpr, tpr, thresholds = roc_curve(y, y_pred_prob, pos_label=pos_label)
-        roc_auc = auc(fpr, tpr)
+        self.AUC = auc(fpr, tpr)
         if draw_roc:
             # 绘制ROC曲线
             plt.figure()
-            plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+            plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {self.AUC:.2f})')
             plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
             plt.xlim([0.0, 1.0])
             plt.ylim([0.0, 1.05])
@@ -146,10 +217,10 @@ class Linear(CalData):
             plt.title('Receiver Operating Characteristic')
             plt.legend(loc="lower right")
             plt.show()
-        print(f"AUC值：{roc_auc:.5f}")
+        print(f"AUC值：{self.AUC:.6f}")
+        print(f"MCC值：{self.MCC:.6f}")
 
-    @staticmethod
-    def _cal_poly(X, y, degree=2, include_linear_bias=False, include_poly_bias=False):
+    def _cal_poly(self, X, y, degree=2, include_linear_bias=False, include_poly_bias=False):
         """
         多项式回归
         :param X: np.ndarray，输入特征。
@@ -167,6 +238,100 @@ class Linear(CalData):
         print("偏置参数：", lin_reg.intercept_)  # b
         print("权重参数：", lin_reg.coef_)  # w
         print("特征名称：", poly_features.get_feature_names_out())
+        self.y_pred = lin_reg.predict(X_poly)  # 预测值
+        # 权重DataFrame
+        self.weight = pd.DataFrame({"feature": poly_features.get_feature_names_out(), "weight": lin_reg.coef_[0]})
+        bias_df = pd.DataFrame({"feature": ["bias"], "weight": lin_reg.intercept_})
+        self.weight = pd.concat([bias_df, self.weight], ignore_index=True)
+
+    def __check_linearity(self, X, y, reg):
+        """
+        R^{2}=1-\frac{\sum\left(y_{i}-\hat{y}_{i}\right)^{2}}{\sum\left(y_{i}-\bar{y}\right)^{2}}
+        R_{\text{adjusted}}^2=1-\left(1-R^2\right)\cdot\frac{n-1}{n-p-1}，式中n是样本数，p是特征数。
+        通常R²超过0.7被认为有较好的线性拟合。
+        """
+        # 线性关系检查：通过R²和调整后的R²
+        self.R_squared = reg.score(X, y)
+        n = X.shape[0]
+        p = X.shape[1]
+        self.adjusted_R_squared = 1 - (1 - self.R_squared) * ((n - 1) / (n - p - 1))
+        print(f"R²: {self.R_squared}, 调整后的R²: {self.adjusted_R_squared}")
+        if self.R_squared > 0.7:
+            print(CT("√ 线性关系良好[R²]").green())
+        else:
+            print(CT("× 线性关系较差[R²]").red())
+
+    def __check_homoscedasticity(self, X, y):
+        """
+        LM=\frac n2\cdot R_{\mathrm{aux}}^2
+        P 值大于 0.05，接受同方差性假设；否则，拒绝同方差性假设。
+        """
+        model = sm.OLS(y, sm.add_constant(X)).fit()
+        test = het_breuschpagan(model.resid, model.model.exog)
+        self.breusch_pagan_pvalue = test[1]
+        print(f"Breusch-Pagan P值（同方差性）: {self.breusch_pagan_pvalue}")
+        if self.breusch_pagan_pvalue > 0.05:
+            print(CT("√ 同方差性假设成立[Breusch-Pagan]").green())
+        else:
+            print(CT("× 存在异方差性[Breusch-Pagan]").red())
+
+    def __check_normality(self, residuals):
+        """
+        Shapiro-Wilk: W=\frac{\left(\sum a_ix_{(i)}\right)^2}{\sum\left(x_i-\bar{x}\right)^2}，其中a_i是常数，x_{(i)}是排序后的数据。
+        D'Agostino's K²：K^2=\frac{(\text{Skewness}^2+\text{Kurtosis}^2)}2
+        :return:
+        """
+        self.shapiro_pvalue = shapiro(residuals)[1]
+        print(f"Shapiro-Wilk P值（正态性）: {self.shapiro_pvalue}")
+        if self.shapiro_pvalue > 0.05:
+            print(CT("√ 残差正态性假设成立[Shapiro-Wilk]").green())
+        else:
+            print(CT("× 残差不符合正态性假设[Shapiro-Wilk]").red())
+
+        dagostino_statistic, dagostino_pvalue = normaltest(residuals)
+        self.dagostino_pvalue = dagostino_pvalue
+        print(f"D'Agostino's K² P值（正态性）: {self.dagostino_pvalue}")
+        if self.dagostino_pvalue > 0.05:
+            print(CT("√ 残差正态性假设成立[D'Agostino's K²]").green())
+        else:
+            print(CT("× 残差不符合正态性假设[D'Agostino's K²]").red())
+
+    def __check_autocorrelation(self, residuals):
+        """
+        d=\frac{\sum_{t=2}^n(e_t-e_{t-1})^2}{\sum_{t=1}^ne_t^2}
+        计算相邻残差的差值平方和。
+        值接近 2，表示没有自相关性；接近 0，表示存在正自相关；接近 4，表示存在负自相关。
+        """
+        self.durbin_watson_statistic = sm.stats.stattools.durbin_watson(residuals)
+        print(f"Durbin-Watson 统计量（自相关性）: {self.durbin_watson_statistic}")
+        if 1.5 < self.durbin_watson_statistic < 2.5:
+            print(CT("√ 没有显著的自相关性[Durbin-Watson]").green())
+        else:
+            print(CT("× 存在自相关性[Durbin-Watson]").red())
+
+    def __check_multicollinearity(self, X, use_bias):
+        """
+        VIF_i=\frac1{1-R_i^2}
+        VIF 值小于 5，一般认为没有多重共线性问题；大于 10，表明存在严重的多重共线性问题。
+        """
+        if use_bias:
+            X_const = sm.add_constant(X)
+        else:
+            X_const = X
+
+        vif_data = pd.DataFrame()
+        vif_data["feature"] = X_const.columns
+        vif_data["VIF"] = [variance_inflation_factor(X_const.values, i) for i in range(X_const.shape[1])]
+        self.VIF = vif_data
+        print(f"VIF（多重共线性）:")
+        print(self.VIF)
+
+        vif_no_const = self.VIF[self.VIF["feature"] != "const"]
+        if all(vif_no_const["VIF"] < 5):
+            print(CT("√ 没有严重的多重共线性问题[VIF]").green())
+        else:
+            print(CT("× 存在多重共线性问题[VIF]").red())
+
 
 class SVM(CalData):
     def __init__(self, df):
@@ -386,6 +551,7 @@ class Tree(CalData):
             plt.close()
 
 
+# 以下是一些废弃的函数，请不要使用
 def cal_linear(X, y, use="sklearn", use_bias=True):
     """
     [基本弃用，请参考Linear类]

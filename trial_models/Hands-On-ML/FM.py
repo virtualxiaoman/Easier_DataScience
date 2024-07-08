@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 # 数据集的每一行包含一个商品，前 24 列是其特征，最后一列是 0 或 1，分别表示用户没有或有点击该商品。
 # 我们的目标是根据输入特征预测用户在测试集上的行为，是一个二分类问题。
-data = np.loadtxt('input/MF_data/fm_dataset.csv', delimiter=',')
+data = np.loadtxt('../input/MF_data/fm_dataset.csv', delimiter=',')
 
 # 划分数据集
 np.random.seed(0)

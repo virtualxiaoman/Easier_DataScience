@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm  # 进度条工具
 
 # 现在数据集的每一行有 3 个数，依次表示用户编号、电影编号、用户对电影的打分(1~5分)
-data = np.loadtxt('input/MF_data/movielens_100k.csv', delimiter=',', dtype=int)
+data = np.loadtxt('../input/MF_data/movielens_100k.csv', delimiter=',', dtype=int)
 print('数据集大小：', len(data))
 # 用户和电影都是从1开始编号的，我们将其转化为从0开始
 data[:, :2] = data[:, :2] - 1
