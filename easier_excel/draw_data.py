@@ -116,7 +116,7 @@ def plot_LR_(x, y, ax, LR_color, LR_linestyle, LR_digits=2):
     return ax
 
 
-def _save_plot(plt=None, save_path=None, save_name=None, save_dpi=300, save_format='png'):
+def save_plot(plt=None, save_path=None, save_name=None, save_dpi=300, save_format='png'):
     """
     保存图片，默认存为png格式，保存到save_path路径下的save_name.png
     :param plt: plt
@@ -130,18 +130,18 @@ def _save_plot(plt=None, save_path=None, save_name=None, save_dpi=300, save_form
         raise ValueError("plt不能为None")
     supported_formats = ['png', 'svg', 'jpg']  # 可支持的文件格式
     if save_format not in supported_formats:
-        func_w(_save_plot,
+        func_w(save_plot,
                warning_text=f"不支持的保存格式'{save_format}'，支持的格式有：{', '.join(supported_formats)}。\n"
                             f"这里自动更改为'.png'，如有需要，请自行更改为正确的格式",
                modify_tip="请检查格式是否正确")
         save_format = 'png'
     if save_name is None or save_name == "":
-        func_w(_save_plot, warning_text='保存的名字不能为空，这里使用默认的名称"未命名"。，如有需要，请自行更改为正确的名称',
+        func_w(save_plot, warning_text='保存的名字不能为空，这里使用默认的名称"未命名"。，如有需要，请自行更改为正确的名称',
                modify_tip="请检查是否正确填写了参数save_name")
         save_name = "未命名"
     if isinstance(save_path, str) and isinstance(save_name, str):
         if not os.path.exists(save_path):
-            func_w(_save_plot, warning_text=f'路径"{save_path}"不存在，已经为你创建', modify_tip="请检查路径是否正确")
+            func_w(save_plot, warning_text=f'路径"{save_path}"不存在，已经为你创建', modify_tip="请检查路径是否正确")
             os.makedirs(save_path)
         # 必须先保存再plt.show()，不然show会释放缓冲区里的图像
         plt.savefig(os.path.join(save_path, f"{save_name}.{save_format}"), dpi=save_dpi)  # dpi为了调节清晰度
@@ -258,7 +258,7 @@ def plot_xy(x, y, title="Title", label='label', color='blue', linestyle='-', x_l
         plt.subplots_adjust(**adjust_params)
     # 保存/显示
     if isinstance(save_path, str) and isinstance(save_name, str):
-        _save_plot(plt, save_path, save_name, save_dpi)
+        save_plot(plt, save_path, save_name, save_dpi)
     if use_ax:
         return ax
     if show_plt:
@@ -353,7 +353,7 @@ def plot_f_and_df(x, y=None, y_func=None, use_ax=False, ax=None, just_f=False, j
         axs[1] = plot_xy(x.detach().numpy(), dy.detach().numpy(), use_ax=True, show_plt=False, label=label_df,
                          title=label_df, ax=axs[1], x_label=x_label, y_label=y_label_df, font_name=font_name)
         if isinstance(save_path, str) and isinstance(save_name, str):
-            _save_plot(plt, save_path, save_name, save_dpi=300)
+            save_plot(plt, save_path, save_name, save_dpi=300)
         plt.show()
     else:
         if ax is None:
@@ -604,7 +604,7 @@ class draw_df(DFUtils):
         else:
             plt.subplots_adjust(**adjust_params)
         if save_path is not None:
-            _save_plot(plt, save_path, save_name, save_dpi=save_dpi)
+            save_plot(plt, save_path, save_name, save_dpi=save_dpi)
         if show_plt:
             plt.show()
         plt.close()

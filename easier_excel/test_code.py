@@ -5,7 +5,7 @@
 # import easier_excel.read_data as read_data
 # import easier_excel.draw_data as draw_data
 # import easier_excel.cal_data as cal_data
-# from easier_excel.draw_data import plot_xy, _save_plot
+# from easier_excel.draw_data import plot_xy, save_plot
 # from scipy import stats
 
 # read_data.set_pd_option(max_show=True, float_type=True)
@@ -31,7 +31,7 @@
 #                  font_name='KaiTi')
 #
 # # for ahh in ['png', 'svg', 'jpg', 'ahh']:
-# #     _save_plot(fig, save_path='output/no', save_dpi=1200, save_format=ahh)
+# #     save_plot(fig, save_path='output/no', save_dpi=1200, save_format=ahh)
 # #     break
 # plt.show()
 # font_list = plt.rcParams['font.sans-serif']

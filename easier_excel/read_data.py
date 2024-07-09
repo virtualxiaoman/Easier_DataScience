@@ -15,6 +15,9 @@ from easier_excel.utils import DFUtils
 from easier_tools.Colorful_Console import func_warning as func_w
 from easier_tools.Colorful_Console import func_error as func_e
 from easier_tools.Colorful_Console import ColoredText as CT
+from easier_tools.to_md import ToMd
+
+ToMd = ToMd()
 
 def set_pd_option(max_show=True, float_type=True, decimal_places=2, reset_all=False, reset_display=False):
     """
@@ -78,8 +81,10 @@ class desc_df(DFUtils):
         super().__init__(df)
         self.numeric_stats = None  # 数据描述
         self.missing_info = None  # 缺失值信息
+        self.outlier_info = None  # 异常值信息
 
-    def show_df(self, head_n=0, tail_n=0, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False):
+    # 展示数据
+    def show_df(self, head_n=0, tail_n=0, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False, **kwargs):
         """
         查看数据，请传入DataFrame数据类型的数据。
         一些可能用到的，用于查阅：
@@ -114,7 +119,16 @@ class desc_df(DFUtils):
             else:
                 print(self.dtypes)
 
-    def describe_df(self, show_stats=True, stats_T=True, stats_detailed=False, show_nan=True, show_nan_heatmap=False):
+        # 输出到md，在指定md_flag=True时才会执行下面的代码s
+        ToMd.text_to_md("1.1 前5行数据:", md_bold=True, md_color='blue', md_h=2, **kwargs)
+        ToMd.df_to_md(self.df.head(5), **kwargs)
+        ToMd.text_to_md("1.2 Shape: " + str(self.shape), md_bold=True, md_color='blue', md_h=2, **kwargs)
+        ToMd.text_to_md("1.3 数据类型:", md_bold=True, md_color='blue', md_h=2, **kwargs)
+        ToMd.df_to_md(self.dtypes.to_frame().T, **kwargs)
+
+    # 描述数据
+    def describe_df(self, show_stats=True, stats_T=True, stats_detailed=False, show_nan=True, show_nan_heatmap=False,
+                    **kwargs):
         """
         输出数据的基本统计信息，以及检测缺失值。
         [使用方法]:
@@ -122,7 +136,7 @@ class desc_df(DFUtils):
             desc.describe_df(show_stats=True, stats_T=True, stats_detailed=False, show_nan=True, show_nan_heatmap=False)
         [Tips]:
             1.如果要把缺失值比例还原成数值，比如3.7%变成0.037，可以使用下面这行代码：
-                self.missing_info['缺失值比例'] = self.missing_info['缺失值比例'].apply(lambda x: float(x[:-1]) / 100)
+                self.missing_info['rate'] = self.missing_info['rate'].apply(lambda x: float(x[:-1]) / 100)
             2.有时为了更新missing_info，需要使用下面这行代码：
                 self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
         :param show_stats: 描述性统计信息。显示DataFrame中数值列的描述性统计信息，如均值、标准差、最大值、最小值等
@@ -151,13 +165,14 @@ class desc_df(DFUtils):
         # missing_percentage = missing_values / total_rows
         missing_percentage = self.df.isnull().mean()
         self.missing_info = pd.DataFrame({
-            '缺失值数量': missing_values,
-            '缺失值比例': missing_percentage
+            'count': missing_values,
+            'rate': missing_percentage
         })
-        self.missing_info['缺失值比例'] = self.missing_info['缺失值比例'].apply(lambda x: '{:.1%}'.format(x))
+        self.missing_info['rate'] = self.missing_info['rate'].apply(lambda x: '{:.1%}'.format(x))
 
         if show_nan:
             print(CT("缺失值检测:\n").blue(), self.missing_info)
+
         if show_nan_heatmap:
             # 黑色是缺失值，白色是非缺失值
             sns.heatmap(self.df.isna(), cmap='gray_r', cbar_kws={"orientation": "vertical"}, vmin=0, vmax=1)
@@ -166,10 +181,22 @@ class desc_df(DFUtils):
             # 还可以使用import missingno
             # missingno.matrix(self.df)
 
-    def draw_heatmap(self, scale=False, xticklabels=None):
+        # 输出到md
+        ToMd.text_to_md("1.4 描述性统计信息:", md_bold=True, md_color='blue', md_h=2, **kwargs)
+        ToMd.df_to_md(self.numeric_stats, md_index=True, **kwargs)
+        ToMd.text_to_md("1.5 缺失值检测:", md_bold=True, md_color='blue', md_h=2,  **kwargs)
+        ToMd.df_to_md(self.missing_info, md_index=True, **kwargs)
+        plt.figure()
+        sns.heatmap(self.df.isna(), cmap='gray_r', cbar_kws={"orientation": "vertical"}, vmin=0, vmax=1)
+        ToMd.pic_to_md(plt, md_title="heatmap", **kwargs)
+        plt.close()
+
+    # 画热力图
+    def draw_heatmap(self, scale=False, v_minmax=None, xticklabels=None):
         """
         画热力图
         :param scale: 是否标准化
+        :param v_minmax: 热力图的颜色范围，如(-1, 1)，该参数只在scale=True时生效
         :param xticklabels: x轴标签，None代表使用df的columns
         """
         if xticklabels is None:
@@ -177,12 +204,16 @@ class desc_df(DFUtils):
         if scale:
             df = self.df.copy()
             df = (df - df.mean()) / df.std()
+            # 如果v_minmax是二元组，则clip()函数将所有小于v_minmax[0]的值替换为v_minmax[0]，所有大于v_minmax[1]的值替换为v_minmax[1]
+            if isinstance(v_minmax, tuple) and len(v_minmax) == 2:
+                df = df.clip(v_minmax[0], v_minmax[1])
             sns.heatmap(df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
         else:
             sns.heatmap(self.df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
         plt.show()
         plt.close()
 
+    # 删除缺失值
     def delete_missing_values(self, axis=0, how='any', inplace=True):
         """
         删除缺失值
@@ -198,6 +229,7 @@ class desc_df(DFUtils):
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
         return temp_df  # 返回删除缺失值后的df(这在选用inplace=False时有用)
 
+    # 填充缺失值
     def fill_missing_values(self, fill_type='mean', **kwargs):
         """
         填充缺失值
@@ -261,7 +293,8 @@ class desc_df(DFUtils):
         # 下面这一行是为了更新self.missing_info，便于在外部调用fill_missing_values后能直接查看修改后的self.missing_info的值
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
 
-    def process_outlier(self, method='IQR', process_type='delete', show_info=False):
+    # 处理异常值
+    def process_outlier(self, method='IQR', process_type='delete', show_info=False, **kwargs):
         """
         处理异常值
         [Warning]:
@@ -306,12 +339,17 @@ class desc_df(DFUtils):
         # 异常值的条件是小于下界或者大于上界。outlier_index是一个DataFrame，True表示异常值
         outlier_index = (self.df_numeric < lower_bound) | (self.df_numeric > upper_bound)
 
-        # todo 这里可以变成self属性值保存，然后再输出
+        self.outlier_info = pd.DataFrame({
+            'count': self.df_numeric[outlier_index].count(),
+            'rate': self.df_numeric[outlier_index].count() / self.df_numeric.shape[0],
+            'lower_bound': lower_bound,
+            'upper_bound': upper_bound
+        })
+        self.outlier_info['rate'] = self.outlier_info['rate'].apply(lambda x: '{:.1%}'.format(x))
         if show_info:
-            print(CT("异常值的数量:\n").blue(), self.df_numeric[outlier_index].count())
-            print(CT("异常值的比例:\n").blue(), self.df_numeric[outlier_index].count() / self.df_numeric.shape[0])
             # 输出outlier_index为True的坐标
             print(CT("异常值的坐标:\n").blue(), np.where(outlier_index))
+            print(CT("异常值信息:\n").blue(), self.outlier_info)
 
         if process_type == 'delete':
             self.df_numeric = self.df_numeric[~outlier_index]
@@ -330,6 +368,9 @@ class desc_df(DFUtils):
 
         # 下面这一行是为了更新self.missing_info，便于在外部调用fill_missing_values后能直接查看修改后的self.missing_info的值
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
+
+        # 输出为md
+        ToMd.df_to_md(self.outlier_info, md_index=True, **kwargs)
 
     def transform_df(self, minmax=(0, 1)):
         """

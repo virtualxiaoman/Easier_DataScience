@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 
 from scipy import stats
-from scipy.stats import shapiro, kstest, normaltest, anderson
+from scipy.stats import shapiro, kstest, normaltest, anderson, chisquare
 
 import statsmodels.api as sm
 from statsmodels.stats.outliers_influence import variance_inflation_factor
@@ -16,8 +16,10 @@ from statsmodels.stats.diagnostic import het_breuschpagan
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC, SVR
 from sklearn.preprocessing import PolynomialFeatures
-from sklearn.metrics import roc_curve, auc, classification_report, matthews_corrcoef
+from sklearn.metrics import roc_curve, auc, classification_report, matthews_corrcoef, hamming_loss, confusion_matrix
 from sklearn import tree
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 import torch
 from torch import nn
@@ -26,6 +28,10 @@ from torch.utils import data
 
 from easier_tools.Colorful_Console import ColoredText as CT
 from easier_tools.Colorful_Console import func_warning as fw
+from easier_tools.to_md import ToMd
+
+ToMd = ToMd()
+
 
 def load_array(data_arrays, batch_size, is_train=True):
     """
@@ -44,8 +50,10 @@ class CalData:
     """
     def __init__(self, df):
         self.df = df
+        self.y_pred = None  # 预测值，np.ndarray类型
 
     @staticmethod
+    # 判断文本中是否含有中文字符
     def has_chinese(text):
         """
         判断文本中是否含有中文字符。
@@ -55,6 +63,7 @@ class CalData:
         pattern = re.compile(r'[\u4e00-\u9fa5]')  # 匹配中文字符的正则表达式
         return bool(pattern.search(text))
 
+
 class Linear(CalData):
     """
     线性回归、逻辑回归、多项式回归。
@@ -63,6 +72,8 @@ class Linear(CalData):
         super().__init__(df)
         # 模型
         self.lin_reg = None  # 线性回归模型
+        self.log_reg = None  # 逻辑回归模型
+        self.poly_features = None  # 多项式特征转换器，多项式回归模型还包括了self.lin_reg
 
         # 预测
         self.y_pred = None  # 预测值，np.ndarray类型
@@ -85,7 +96,7 @@ class Linear(CalData):
         self.dagostino_pvalue = None  # D'Agostino's K² P值，float类型
         self.durbin_watson_statistic = None  # Durbin-Watson统计量，float类型
 
-    def cal_linear(self, X_name, y_name, use_bias=True):
+    def cal_linear(self, X_name, y_name, use_bias=True, **kwargs):
         """
         线性回归。
         公式：y = X @ w + b
@@ -102,23 +113,28 @@ class Linear(CalData):
         """
         X = self.df[X_name]
         y = self.df[y_name].values.reshape(-1, 1)
-        self._cal_linear(X, y, use_bias)
+        self._cal_linear(X, y, use_bias, **kwargs)
 
-    def cal_logistic(self, X_name, y_name, pos_label=1):
+    def cal_logistic(self, X_name, y_name, use_bias=True, pos_label=1, **kwargs):
         """
         逻辑回归。
         公式：y = 1 / (1 + exp(-X @ w + b))
+        二分类：
+        \hat{y}=\sigma(X\cdot\mathbf{w}+b)
+        多分类：
+        \hat{y}_{i}=\frac{e^{\left(X \cdot \mathbf{w}_{i}+b_{i}\right)}}{\sum_{j=1}^{C} e^{\left(X \cdot \mathbf{w}_{j}+b_{j}\right)}}
         :param X_name: str或list，输入特征的列名。
         :param y_name: str，输出标签的列名。
+        :param use_bias: bool，是否使用偏置参数b。
         :param pos_label: int，正类别标签。
         """
         X = self.df[X_name]
         y = self.df[y_name].values.reshape(-1, )
-        self._cal_logistic(X, y, pos_label)
+        self._cal_logistic(X, y, use_bias, pos_label, **kwargs)
 
-    def cal_poly(self, X_name, y_name, degree=2, include_linear_bias=False, include_poly_bias=False):
+    def cal_poly(self, X_name, y_name, degree=2, include_linear_bias=False, include_poly_bias=False, **kwargs):
         """
-        多项式回归。
+        多项式回归。因为使用的不多，这里不进行统计量的计算与检验，仅给出模型的拟合。
         [Tips]:
             比如X的shape是(8,3), degree=3, include_bias=True，那么X_poly的shape是(8, 20)，其中包含了bias项。具体顺序如下：
             ['1'
@@ -139,9 +155,9 @@ class Linear(CalData):
         """
         X = self.df[X_name]
         y = self.df[y_name].values.reshape(-1, 1)
-        self._cal_poly(X, y, degree, include_linear_bias, include_poly_bias)
+        self._cal_poly(X, y, degree, include_linear_bias, include_poly_bias,  **kwargs)
 
-    def _cal_linear(self, X, y, use_bias=True):
+    def _cal_linear(self, X, y, use_bias=True, md_flag=False, **kwargs):
         """
         线性回归
         :param X: np.ndarray，输入特征。
@@ -152,7 +168,7 @@ class Linear(CalData):
         # 线性回归的fit部分
         self.lin_reg = LinearRegression(fit_intercept=use_bias)
         self.lin_reg.fit(X, y)
-        print(CT("线性回归:").blue())
+        print(CT("[LinearRegression]线性回归:").blue())
         print("偏置参数：", self.lin_reg.intercept_)  # b
         print("权重参数：", self.lin_reg.coef_)  # w
         self.y_pred = self.lin_reg.predict(X)  # 预测值
@@ -161,6 +177,7 @@ class Linear(CalData):
         self.weight = pd.DataFrame({"feature": X.columns, "weight": self.lin_reg.coef_[0]})
         bias_df = pd.DataFrame({"feature": ["bias"], "weight": self.lin_reg.intercept_})
         self.weight = pd.concat([bias_df, self.weight], ignore_index=True)
+        ToMd.df_to_md(self.weight, md_flag, md_index=True)
 
         # 计算部分统计量
         self.residuals = y - self.y_pred
@@ -169,17 +186,17 @@ class Linear(CalData):
         self.RMSE = math.sqrt(self.MSE)
 
         # 线性：计算R²和调整后的R²
-        self.__check_linearity(X, y, self.lin_reg)
+        self.__check_linearity(X, y, self.lin_reg, md_flag)
         # 同方差性: 使用Breusch-Pagan检验
-        self.__check_homoscedasticity(X, y)
-        # 正态性: 使用Shapiro-Wilk检验和Kolmogorov-Smirnov检验
-        self.__check_normality(self.residuals)
+        self.__check_homoscedasticity(X, y, md_flag)
+        # 正态性: 使用Shapiro-Wilk检验和D'Agostino's K²检验
+        self.__check_normality(self.residuals, md_flag)
         # 自相关性: 使用Durbin-Watson检验
-        self.__check_autocorrelation(self.residuals)
+        self.__check_autocorrelation(self.residuals, md_flag)
         # 多重共线性: 使用VIF检测
-        self.__check_multicollinearity(X, use_bias)
+        self.__check_multicollinearity(X, use_bias, md_flag)
 
-    def _cal_logistic(self, X, y, pos_label=1, draw_roc=False):
+    def _cal_logistic(self, X, y, use_bias=True, pos_label=1, draw_roc=False, md_flag=False):
         """
         逻辑回归
         :param X: np.ndarray，输入特征。
@@ -187,40 +204,65 @@ class Linear(CalData):
         :param pos_label: int，正类别标签。
         :return: None
         """
-        log_reg = LogisticRegression()
-        log_reg.fit(X, y)
+        # neg_label是y里面除了pos_label之外的另外的全部标签
+        neg_label = [i for i in set(y) if i != pos_label]
+        labels = [pos_label] + neg_label
 
-        print(CT("逻辑回归:").blue())
-        print("偏置参数：", log_reg.intercept_)  # b
-        print("权重参数：", log_reg.coef_)  # w
-        print("类别：", log_reg.classes_)  # 类别
-        print("准确率：", log_reg.score(X, y))
-        self.y_pred = log_reg.predict(X)  # 预测值
-        print(classification_report(y, self.y_pred))  # 分类报告
+        self.log_reg = LogisticRegression(fit_intercept=use_bias)
+        self.log_reg.fit(X, y)
 
+        print(CT("[LogisticRegression]逻辑回归:").blue())
+        print("偏置参数：", self.log_reg.intercept_)  # b
+        print("权重参数：", self.log_reg.coef_)  # w, shape:(C, D)。C是类别数，D是特征数
+        print("类别：", self.log_reg.classes_)  # 类别
+        print("准确率：", self.log_reg.score(X, y))
+
+        print("----------------------")
+        intercept_reshaped = self.log_reg.intercept_.reshape(1, -1)  # (C,) -> (1,C)
+        coef_with_bias = np.vstack([intercept_reshaped, np.array(self.log_reg.coef_).T])  # (1,C) + (D,C) -> (D+1,C)
+        features_with_bias = ["bias"] + X.columns.tolist()  # (D,) -> (D,) -> (D+1,)
+        # self.weight的shape是(D+1,C)，加上 index(features_with_bias) 和 columns(self.log_reg.classes_)
+        self.weight = pd.DataFrame(coef_with_bias, index=features_with_bias, columns=self.log_reg.classes_)
+        ToMd.df_to_md(self.weight, md_flag, md_index=True)
+
+        self.y_pred = self.log_reg.predict(X)  # 预测值
+        self.y_pred_prob = self.log_reg.predict_proba(X)[:, 1]  # 预测概率
+
+        print("分类报告：")
+        classify_report = classification_report(y, self.y_pred)
+        print(classify_report)
+        print(f"混淆矩阵 -- labels = {labels}：")
+        conf_matrix = confusion_matrix(y, self.y_pred, labels=labels)
+        print(conf_matrix)
+
+        ToMd.text_to_md(f"RandomForestClassifier 训练集准确率: {self.log_reg.score(X, y)}", md_flag, md_color='blue')
+        ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
+        ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
+
+        # 计算部分统计量
         self.residuals = y - self.y_pred
-        self.MCC = matthews_corrcoef(y, self.y_pred)  # 计算MCC值
+        self.MAE = np.mean(np.abs(self.residuals))
+        self.MSE = np.mean(self.residuals ** 2)
+        self.RMSE = math.sqrt(self.MSE)
 
-        y_pred_prob = log_reg.predict_proba(X)[:, 1]  # 计算预测概率
+        # 线性：计算R²和调整后的R²
+        self.__check_linearity(X, y, self.log_reg, md_flag)
+        # 同方差性: 使用Breusch-Pagan检验
+        self.__check_homoscedasticity(X, y, md_flag)
+        # 正态性: 使用Shapiro-Wilk检验和D'Agostino's K²检验
+        self.__check_normality(self.residuals, md_flag)
+        # 自相关性: 使用Durbin-Watson检验
+        self.__check_autocorrelation(self.residuals, md_flag)
+        # 多重共线性: 使用VIF检测
+        self.__check_multicollinearity(X, use_bias, md_flag)
+        # 计算MCC值
+        self.__check_mcc(y, self.y_pred, md_flag)
+        # 计算汉明损失
+        self.__check_hamming_loss(y, self.y_pred, md_flag)
         # 计算ROC曲线和AUC值
-        fpr, tpr, thresholds = roc_curve(y, y_pred_prob, pos_label=pos_label)
-        self.AUC = auc(fpr, tpr)
-        if draw_roc:
-            # 绘制ROC曲线
-            plt.figure()
-            plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {self.AUC:.2f})')
-            plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-            plt.xlim([0.0, 1.0])
-            plt.ylim([0.0, 1.05])
-            plt.xlabel('False Positive Rate')
-            plt.ylabel('True Positive Rate')
-            plt.title('Receiver Operating Characteristic')
-            plt.legend(loc="lower right")
-            plt.show()
-        print(f"AUC值：{self.AUC:.6f}")
-        print(f"MCC值：{self.MCC:.6f}")
+        self.__check_auc(X, y, self.log_reg, pos_label, draw_roc, md_flag)
 
-    def _cal_poly(self, X, y, degree=2, include_linear_bias=False, include_poly_bias=False):
+    def _cal_poly(self, X, y, degree=2, include_linear_bias=False, include_poly_bias=False, md_flag=False):
         """
         多项式回归
         :param X: np.ndarray，输入特征。
@@ -230,90 +272,155 @@ class Linear(CalData):
         :param include_poly_bias: bool，是否包含多项式偏置参数。
         :return: None
         """
-        poly_features = PolynomialFeatures(degree=degree, include_bias=include_poly_bias)
-        X_poly = poly_features.fit_transform(X)
-        lin_reg = LinearRegression(fit_intercept=include_linear_bias)
-        lin_reg.fit(X_poly, y)
-        print(CT("多项式回归:").blue())
-        print("偏置参数：", lin_reg.intercept_)  # b
-        print("权重参数：", lin_reg.coef_)  # w
-        print("特征名称：", poly_features.get_feature_names_out())
-        self.y_pred = lin_reg.predict(X_poly)  # 预测值
+        self.poly_features = PolynomialFeatures(degree=degree, include_bias=include_poly_bias)
+        X_poly = self.poly_features.fit_transform(X)
+        self.lin_reg = LinearRegression(fit_intercept=include_linear_bias)
+        self.lin_reg.fit(X_poly, y)
+        print(CT("[PolynomialFeatures]多项式回归:").blue())
+        print("偏置参数：", self.lin_reg.intercept_)  # b
+        print("权重参数：", self.lin_reg.coef_)  # w
+        print("特征名称：", self.poly_features.get_feature_names_out())
+        self.y_pred = self.lin_reg.predict(X_poly)  # 预测值
         # 权重DataFrame
-        self.weight = pd.DataFrame({"feature": poly_features.get_feature_names_out(), "weight": lin_reg.coef_[0]})
-        bias_df = pd.DataFrame({"feature": ["bias"], "weight": lin_reg.intercept_})
+        self.weight = pd.DataFrame({"feature": self.poly_features.get_feature_names_out(),
+                                    "weight": self.lin_reg.coef_[0]})
+        bias_df = pd.DataFrame({"feature": ["bias"], "weight": self.lin_reg.intercept_})
         self.weight = pd.concat([bias_df, self.weight], ignore_index=True)
+        ToMd.df_to_md(self.weight, md_flag, md_index=True)
 
-    def __check_linearity(self, X, y, reg):
+    # 绘制ROC曲线
+    def __draw_roc_curve(self, fpr, tpr, draw_roc, md_flag):
+        plt.figure()
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {self.AUC:.2f})')
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Receiver Operating Characteristic')
+        plt.legend(loc="lower right")
+        ToMd.pic_to_md(plt, md_flag, md_title="ROC")
+        if draw_roc:
+            plt.show()
+        plt.close()
+
+    # 线性：计算R²和调整后的R²
+    def __check_linearity(self, X, y, reg, md_flag):
         """
+        X,Y的关系是线性的
         R^{2}=1-\frac{\sum\left(y_{i}-\hat{y}_{i}\right)^{2}}{\sum\left(y_{i}-\bar{y}\right)^{2}}
         R_{\text{adjusted}}^2=1-\left(1-R^2\right)\cdot\frac{n-1}{n-p-1}，式中n是样本数，p是特征数。
         通常R²超过0.7被认为有较好的线性拟合。
         """
+        formula1 = r"R^{2}=1-\frac{\sum\left(y_{i}-\hat{y}_{i}\right)^{2}}{\sum\left(y_{i}-\bar{y}\right)^{2}}"
+        formula2 = r"R_{\text{adjusted}}^2=1-\left(1-R^2\right)\cdot\frac{n-1}{n-p-1}"
+
         # 线性关系检查：通过R²和调整后的R²
         self.R_squared = reg.score(X, y)
         n = X.shape[0]
         p = X.shape[1]
         self.adjusted_R_squared = 1 - (1 - self.R_squared) * ((n - 1) / (n - p - 1))
+
         print(f"R²: {self.R_squared}, 调整后的R²: {self.adjusted_R_squared}")
+        ToMd.text_to_md(f"线性回归的公式是： $ {formula1} $, $ {formula2} $", md_flag)
+        ToMd.text_to_md(f"R²: {self.R_squared}, 调整后的R²: {self.adjusted_R_squared}", md_flag)
+
         if self.R_squared > 0.7:
             print(CT("√ 线性关系良好[R²]").green())
+            ToMd.text_to_md(f"√ 线性关系良好[R²]", md_flag, md_color='green')
         else:
             print(CT("× 线性关系较差[R²]").red())
+            ToMd.text_to_md(f"× 线性关系较差[R²]", md_flag, md_color='red')
 
-    def __check_homoscedasticity(self, X, y):
+    # 同方差性：使用Breusch-Pagan检验
+    def __check_homoscedasticity(self, X, y, md_flag):
         """
+        误差项的方差不随X的不同而变化
         LM=\frac n2\cdot R_{\mathrm{aux}}^2
         P 值大于 0.05，接受同方差性假设；否则，拒绝同方差性假设。
         """
-        model = sm.OLS(y, sm.add_constant(X)).fit()
+        formula = r"LM=\frac n2\cdot R_{\mathrm{aux}}^2"
+
+        model = sm.OLS(y, sm.add_constant(X)).fit()  # 拟合最小二乘模型
         test = het_breuschpagan(model.resid, model.model.exog)
         self.breusch_pagan_pvalue = test[1]
         print(f"Breusch-Pagan P值（同方差性）: {self.breusch_pagan_pvalue}")
+
+        ToMd.text_to_md(f"同方差性的公式是： $ {formula} $", md_flag)
+        ToMd.text_to_md(f"Breusch-Pagan P值（同方差性）: {self.breusch_pagan_pvalue}", md_flag)
+
         if self.breusch_pagan_pvalue > 0.05:
             print(CT("√ 同方差性假设成立[Breusch-Pagan]").green())
+            ToMd.text_to_md(f"√ 同方差性假设成立[Breusch-Pagan]", md_flag, md_color='green')
         else:
             print(CT("× 存在异方差性[Breusch-Pagan]").red())
+            ToMd.text_to_md(f"× 存在异方差性[Breusch-Pagan]", md_flag, md_color='red')
 
-    def __check_normality(self, residuals):
+    # 正态性：使用Shapiro-Wilk检验和D'Agostino's K²检验
+    def __check_normality(self, residuals, md_flag):
         """
-        Shapiro-Wilk: W=\frac{\left(\sum a_ix_{(i)}\right)^2}{\sum\left(x_i-\bar{x}\right)^2}，其中a_i是常数，x_{(i)}是排序后的数据。
+        误差项的分布应该是正态分布的
+        Shapiro-Wilk: W=\frac{\left(\sum a_ix_{(i)}\right)^2}{\sum\left(x_i-\bar{x}\right)^2}，
+        其中a_i是常数，x_{(i)}是排序后的数据。
         D'Agostino's K²：K^2=\frac{(\text{Skewness}^2+\text{Kurtosis}^2)}2
         :return:
         """
+        formula1 = r"Shapiro-Wilk: W=\frac{\left(\sum a_ix_{(i)}\right)^2}{\sum\left(x_i-\bar{x}\right)^2}"
+        formula2 = r"D'Agostino's K²：K^2=\frac{(\text{Skewness}^2+\text{Kurtosis}^2)}2"
+
         self.shapiro_pvalue = shapiro(residuals)[1]
         print(f"Shapiro-Wilk P值（正态性）: {self.shapiro_pvalue}")
+        ToMd.text_to_md(f"正态性的公式是： $ {formula1} $, $ {formula2} $", md_flag)
+        ToMd.text_to_md(f"Shapiro-Wilk P值（正态性）: {self.shapiro_pvalue}", md_flag)
+
         if self.shapiro_pvalue > 0.05:
             print(CT("√ 残差正态性假设成立[Shapiro-Wilk]").green())
+            ToMd.text_to_md("√ 残差正态性假设成立[Shapiro-Wilk]", md_flag, md_color='green')
         else:
             print(CT("× 残差不符合正态性假设[Shapiro-Wilk]").red())
+            ToMd.text_to_md("× 残差不符合正态性假设[Shapiro-Wilk]", md_flag, md_color='red')
 
         dagostino_statistic, dagostino_pvalue = normaltest(residuals)
         self.dagostino_pvalue = dagostino_pvalue
         print(f"D'Agostino's K² P值（正态性）: {self.dagostino_pvalue}")
+        ToMd.text_to_md(f"D'Agostino's K² P值（正态性）: {self.dagostino_pvalue}", md_flag)
         if self.dagostino_pvalue > 0.05:
             print(CT("√ 残差正态性假设成立[D'Agostino's K²]").green())
+            ToMd.text_to_md("√ 残差正态性假设成立[D'Agostino's K²]", md_flag, md_color='green')
         else:
             print(CT("× 残差不符合正态性假设[D'Agostino's K²]").red())
+            ToMd.text_to_md("× 残差不符合正态性假设[D'Agostino's K²]", md_flag, md_color='red')
 
-    def __check_autocorrelation(self, residuals):
+    # 自相关性：使用Durbin-Watson检验
+    def __check_autocorrelation(self, residuals, md_flag):
         """
+        残差不应随时间或其他自变量的顺序发生系统性变化
         d=\frac{\sum_{t=2}^n(e_t-e_{t-1})^2}{\sum_{t=1}^ne_t^2}
         计算相邻残差的差值平方和。
         值接近 2，表示没有自相关性；接近 0，表示存在正自相关；接近 4，表示存在负自相关。
         """
+        formula = r"d=\frac{\sum_{t=2}^n(e_t-e_{t-1})^2}{\sum_{t=1}^ne_t^2}"
+
         self.durbin_watson_statistic = sm.stats.stattools.durbin_watson(residuals)
         print(f"Durbin-Watson 统计量（自相关性）: {self.durbin_watson_statistic}")
+        ToMd.text_to_md(f"自相关性的公式是： $ {formula} $", md_flag)
+        ToMd.text_to_md(f"Durbin-Watson 统计量（自相关性）: {self.durbin_watson_statistic}", md_flag)
         if 1.5 < self.durbin_watson_statistic < 2.5:
             print(CT("√ 没有显著的自相关性[Durbin-Watson]").green())
+            ToMd.text_to_md("√ 没有显著的自相关性[Durbin-Watson]", md_flag, md_color='green')
         else:
             print(CT("× 存在自相关性[Durbin-Watson]").red())
+            ToMd.text_to_md("× 存在自相关性[Durbin-Watson]", md_flag, md_color='red')
 
-    def __check_multicollinearity(self, X, use_bias):
+    # 多重共线性：使用VIF检测
+    def __check_multicollinearity(self, X, use_bias, md_flag):
         """
+        多个自变量之间不应存在线性关系
         VIF_i=\frac1{1-R_i^2}
         VIF 值小于 5，一般认为没有多重共线性问题；大于 10，表明存在严重的多重共线性问题。
         """
+        formula = r"VIF_i=\frac1{1-R_i^2}"
+
         if use_bias:
             X_const = sm.add_constant(X)
         else:
@@ -325,17 +432,86 @@ class Linear(CalData):
         self.VIF = vif_data
         print(f"VIF（多重共线性）:")
         print(self.VIF)
+        ToMd.text_to_md(f"VIF（多重共线性）的公式是： $ {formula} $", md_flag)
+        ToMd.df_to_md(self.VIF, md_flag, md_index=True)
 
         vif_no_const = self.VIF[self.VIF["feature"] != "const"]
         if all(vif_no_const["VIF"] < 5):
             print(CT("√ 没有严重的多重共线性问题[VIF]").green())
+            ToMd.text_to_md("√ 没有严重的多重共线性问题[VIF]", md_flag, md_color='green')
         else:
             print(CT("× 存在多重共线性问题[VIF]").red())
+            ToMd.text_to_md("× 存在多重共线性问题[VIF]", md_flag, md_color='red')
+
+    # MCC：计算MCC值
+    def __check_mcc(self, y_true, y_pred, md_flag):
+        """
+        计算MCC值
+        MCC = \frac{TP \times TN - FP \times FN}{\sqrt{(TP + FP) \times (TP + FN) \times (TN + FP) \times (TN + FN)}}
+        值接近 1 表示分类性能好，值接近 -1 表示分类性能差。
+        """
+        formula = r"MCC = \frac{TP \times TN - FP \times FN}{\sqrt{(TP + FP) \times (TP + FN) \times (TN + FP) \times (TN + FN)}}"
+
+        self.mcc = matthews_corrcoef(y_true, y_pred)
+        print(f"Matthews 相关系数（MCC）: {self.mcc}")
+        ToMd.text_to_md(f"MCC的公式是： $ {formula} $", md_flag)
+        ToMd.text_to_md(f"Matthews 相关系数（MCC）: {self.mcc}", md_flag)
+        if self.mcc > 0.5:
+            print(CT("√ 分类性能良好[MCC]").green())
+            ToMd.text_to_md("√ 分类性能良好[MCC]", md_flag, md_color='green')
+        elif self.mcc > 0:
+            print(CT("△ 分类性能一般[MCC]").red())
+            ToMd.text_to_md("△ 分类性能一般[MCC]", md_flag, md_color='red')
+        else:
+            print(CT("× 分类性能极差[MCC]").red())
+            ToMd.text_to_md("× 分类性能极差[MCC]", md_flag, md_color='red')
+
+    # 汉明损失：Hamming Loss
+    def __check_hamming_loss(self, y_true, y_pred, md_flag):
+        """
+        计算汉明损失
+        Hamming Loss = \frac{1}{N}\sum_{i=1}^{N} \frac{1}{L} \sum_{j=1}^{L} \mathbb{I} \left (y_{ij} \ne \hat{y}_{ij} \right)，
+        其中N是样本数量，L是标签数量，\mathbb{I} 是指示函数。
+        汉明损失表示标签预测错误的比例，值越小越好。
+        """
+        formula = r"Hamming Loss = \frac{1}{N}\sum_{i=1}^{N} \frac{1}{L} \sum_{j=1}^{L} \mathbb{I} \left (y_{ij} \ne \hat{y}_{ij} \right)"
+        self.hamming_loss = hamming_loss(y_true, y_pred)
+        print(f"汉明损失（Hamming Loss）: {self.hamming_loss}")
+
+        ToMd.text_to_md(f"MCC的公式是： $ {formula} $", md_flag)
+        ToMd.text_to_md(f"汉明损失（Hamming Loss）: {self.hamming_loss}", md_flag)
+        if self.hamming_loss < 0.1:
+            print(CT("√ 汉明损失较低[Hamming Loss]").green())
+            ToMd.text_to_md("√ 汉明损失较低[Hamming Loss]", md_flag, md_color='green')
+        else:
+            print(CT("× 汉明损失较高[Hamming Loss]").red())
+            ToMd.text_to_md("× 汉明损失较高[Hamming Loss]", md_flag, md_color='red')
+
+    # AUC：计算ROC曲线和AUC值
+    def __check_auc(self, X, y, log_reg, pos_label, draw_roc, md_flag):
+        y_pred_prob = log_reg.predict_proba(X)[:, 1]  # 计算预测概率
+        # 计算ROC曲线和AUC值
+        fpr, tpr, thresholds = roc_curve(y, y_pred_prob, pos_label=pos_label)
+        self.AUC = auc(fpr, tpr)
+        self.__draw_roc_curve(fpr, tpr, draw_roc, md_flag)
+        print(f"ROC曲线下的面积（AUC）: {self.AUC}")
+        ToMd.text_to_md(f"ROC曲线下的面积（AUC）: {self.AUC}", md_flag)
+        if self.AUC > 0.8:
+            print(CT("√ AUC值较高[AUC]").green())
+            ToMd.text_to_md("√ AUC值较高[AUC]", md_flag, md_color='green')
+        else:
+            print(CT("× AUC值较低[AUC]").red())
+            ToMd.text_to_md("× AUC值较低[AUC]", md_flag, md_color='red')
 
 
 class SVM(CalData):
     def __init__(self, df):
         super().__init__(df)
+        self.svc = None  # 支持向量机分类模型
+        self.svr = None  # 支持向量机回归模型
+
+        self.y_pred = None  # 预测值，np.ndarray类型
+        self.residuals = None  # 残差，np.ndarray类型
 
     def cal_svc(self, X_name, y_name, draw_svc=False, **kwargs):
         """
@@ -387,7 +563,7 @@ class SVM(CalData):
         y = pd.Series(self.df[y_name], name=y_name)  # 我也不知道为什么不指定name就没name了，不过也只影响绘图
         self._cal_svr(X, y, draw_svr, **kwargs)
 
-    def _cal_svc(self, X, y, draw_svc, **kwargs):
+    def _cal_svc(self, X, y, draw_svc, md_flag, **kwargs):
         """
         支持向量机
         :param X: np.ndarray，输入特征。
@@ -396,18 +572,20 @@ class SVM(CalData):
         :param kwargs: 其他参数。
         :return: None
         """
-        model = SVC(**kwargs)
-        model.fit(X, y)
+        self.svc = SVC(**kwargs)
+        self.svc.fit(X, y)
         print(CT("支持向量机-分类:").blue())
-        # print("支持向量：", model.support_vectors_)
-        # print("支持向量的索引：", model.support_)
-        print("支持向量的个数：", model.n_support_)
+        # print("支持向量：", self.svc.support_vectors_)
+        # print("支持向量的索引：", self.svc.support_)
+        print("支持向量的个数：", self.svc.n_support_)
         # 如果是线性核函数，可以输出权重参数
-        if model.kernel == "linear":
-            print("权重参数：", model.coef_)
-        print("偏置参数：", model.intercept_)
-        print("类别：", model.classes_)
-        print("准确率：", model.score(X, y))
+        if self.svc.kernel == "linear":
+            print("权重参数：", self.svc.coef_)
+        print("偏置参数：", self.svc.intercept_)
+        print("类别：", self.svc.classes_)
+        print("准确率：", self.svc.score(X, y))
+        ToMd.text_to_md(f"SVC 准确率: {self.svc.score(X, y)}", md_flag, md_color='blue')
+        self.y_pred = self.svc.predict(X)  # 预测值
         if draw_svc:
             # 绘制SVM
             if X.shape[1] > 2:
@@ -424,16 +602,16 @@ class SVM(CalData):
             # xx.shape=(100, 100)，yy.shape=(100, 100)
             xx, yy = np.meshgrid(np.linspace(x_min, x_max, 100), np.linspace(y_min, y_max, 100))
             # np.c_[xx.ravel(), yy.ravel()]将shape=(100, 100)转换为shape=(10000, 2)
-            Z_contourf = model.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+            Z_contourf = self.svc.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
             plt.contourf(xx, yy, Z_contourf, cmap=ListedColormap(['#FF1493', '#66ccff']), alpha=0.5)
             # 2.绘制决策边界
             xy = np.vstack([xx.ravel(), yy.ravel()]).T
-            Z_contour = model.decision_function(xy).reshape(xx.shape)
+            Z_contour = self.svc.decision_function(xy).reshape(xx.shape)
             ax.contour(xx, yy, Z_contour, colors='k', levels=[-1, 0, 1], alpha=0.8, linestyles=['--', '-', '--'])
             # 3.绘制散点图
             ax.scatter(X.iloc[:, 0], X.iloc[:, 1], c=y, cmap=ListedColormap(['#FF0000', '#0000FF']), edgecolors='k')
             # 4.绘制支持向量
-            sv = model.support_vectors_
+            sv = self.svc.support_vectors_
             plt.scatter(sv[:, 0], sv[:, 1], s=100, linewidth=1, facecolors='none', edgecolors='k')
             plt.title("SVM Classification")
             if hasattr(X, "columns"):
@@ -452,7 +630,7 @@ class SVM(CalData):
             plt.show()
             plt.close()
 
-    def _cal_svr(self, X, y, draw_svr, **kwargs):
+    def _cal_svr(self, X, y, draw_svr, md_flag, **kwargs):
         """
         支持向量回归
         :param X: np.ndarray，输入特征。
@@ -461,17 +639,20 @@ class SVM(CalData):
         :param kwargs: 其他参数。
         :return: None
         """
-        model = SVR(**kwargs)
-        model.fit(X, y)
+        self.svr = SVR(**kwargs)
+        self.svr.fit(X, y)
         print(CT("支持向量机-回归:").blue())
         # print("支持向量：", model.support_vectors_)
         # print("支持向量的索引：", model.support_)
-        print("支持向量的个数：", model.n_support_)
+        print("支持向量的个数：", self.svr.n_support_)
         # 如果是线性核函数，可以输出权重参数
-        if model.kernel == "linear":
-            print("权重参数：", model.coef_)
-        print("偏置参数：", model.intercept_)
-        print("R^2分数：", model.score(X, y))  # R^2分数越接近1，表示模型拟合得越好
+        if self.svr.kernel == "linear":
+            print("权重参数：", self.svr.coef_)
+        print("偏置参数：", self.svr.intercept_)
+        print("R²分数：", self.svr.score(X, y))  # R^2分数越接近1，表示模型拟合得越好
+        ToMd.text_to_md(f"SVR R²分数: {self.svr.score(X, y)}", md_flag, md_color='blue')
+        self.y_pred = self.svr.predict(X)
+        self.residuals = y - self.y_pred
         if draw_svr:
             # 绘制SVR的拟合曲线
             # 如果X超过了一维，就只绘制第一个特征
@@ -479,7 +660,7 @@ class SVM(CalData):
                 fw(self._cal_svr, "X的维度大于1，无法绘制SVM-Regression")
                 return None
             plt.scatter(X, y, c='b')
-            plt.plot(X, model.predict(X), c='r', label='SVR')
+            plt.plot(X, self.svr.predict(X), c='r', label='SVR')
             plt.title("SVR Regression")
             if hasattr(X, "columns"):
                 if self.has_chinese(X.columns[0]):
@@ -499,13 +680,18 @@ class SVM(CalData):
 class Tree(CalData):
     def __init__(self, df):
         super().__init__(df)
+        self.tree = None
+        self.y_pred = None
+        # 按特征重要性降序排列的特征
+        self.feature_by_importance = None
 
-    def cal_tree(self, X_name, y_name, draw_tree=False, **kwargs):
+    def cal_tree(self, X_name, y_name, draw_tree=False, pos_label=1, **kwargs):
         """
         决策树
         :param X_name: str或list，输入特征的列名。
         :param y_name: str，输出标签的列名。
         :param draw_tree: bool，是否绘制决策树。
+        :param pos_label: int，正类别标签。
         :param kwargs: 其他参数。包括：
             criterion: Any = "gini",              # 选择特征的标准，包括{"gini", "entropy", "log_loss"}，对应CART、C4.5
             splitter: Any = "best",               # 选择分裂节点的策略，包括{"best", "random"}
@@ -521,9 +707,21 @@ class Tree(CalData):
         """
         X = self.df[X_name]
         y = self.df[y_name].values
-        self._cal_tree(X, y, draw_tree, **kwargs)
+        self._cal_tree(X, y, draw_tree,pos_label, **kwargs)
 
-    def _cal_tree(self, X, y, draw_tree, **kwargs):
+    def cal_random_forest(self, X_name, y_name, pos_label=1, **kwargs):
+        """
+        随机森林
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param pos_label: int，正类别标签。
+        :param kwargs: 其他参数。包括：
+        """
+        X = self.df[X_name]
+        y = self.df[y_name].values
+        self._cal_random_forest(X, y, pos_label, **kwargs)
+
+    def _cal_tree(self, X, y, draw_tree, pos_label, md_flag=False, **kwargs):
         """
         决策树
         :param X: np.ndarray，输入特征。
@@ -532,23 +730,124 @@ class Tree(CalData):
         :param kwargs: 其他参数。
         :return: None
         """
-        model = tree.DecisionTreeClassifier(**kwargs)
-        model.fit(X, y)
+        neg_label = [i for i in set(y) if i != pos_label]
+        labels = [pos_label] + neg_label
+
+        self.tree = tree.DecisionTreeClassifier(**kwargs)
+        self.tree.fit(X, y)
         print(CT("决策树:").blue())
-        print("特征重要性：", model.feature_importances_)
-        print("准确率：", model.score(X, y))
+        print("特征重要性：", self.tree.feature_importances_)
+        print("准确率：", self.tree.score(X, y))
+        self.y_pred = self.tree.predict(X)
+
+        print("分类报告：")
+        classify_report = classification_report(y, self.y_pred)
+        print(classify_report)
+        print(f"混淆矩阵 -- labels = {labels}：")
+        conf_matrix = confusion_matrix(y, self.y_pred, labels=labels)
+        print(conf_matrix)
+
+        ToMd.text_to_md(f"DecisionTreeClassifier 训练集准确率: {self.tree.score(X, y)}", md_flag, md_color='blue')
+        ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
+        ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
+        # 绘制决策树
+        plt.figure()
+        # 如果X.columns.tolist()有中文，就设置字体是宋体
+        if hasattr(X, "columns"):
+            for col in X.columns:
+                if self.has_chinese(col):
+                    plt.rcParams['font.sans-serif'] = ['SimSun']
+                    break
+        tree.plot_tree(self.tree, filled=True,
+                       feature_names=X.columns.tolist(), class_names=[str(i) for i in self.tree.classes_])
+        ToMd.pic_to_md(plt, md_flag, md_title="DecisionTreeClassifier")
         if draw_tree:
-            # 绘制决策树
-            plt.figure(figsize=(10, 6))
-            # 如果X.columns.tolist()有中文，就设置字体是宋体
-            if hasattr(X, "columns"):
-                for col in X.columns:
-                    if self.has_chinese(col):
-                        plt.rcParams['font.sans-serif'] = ['SimSun']
-                        break
-            tree.plot_tree(model, filled=True, feature_names=X.columns.tolist(), class_names=[str(i) for i in model.classes_])
             plt.show()
-            plt.close()
+        plt.close()
+
+    def _cal_random_forest(self, X, y, pos_label, md_flag=False, **kwargs):
+        """
+        随机森林
+        :param X:
+        :param y:
+        :param kwargs:
+        :return:
+        """
+        neg_label = [i for i in set(y) if i != pos_label]
+        labels = [pos_label] + neg_label
+
+        self.tree = RandomForestClassifier(**kwargs)
+        self.tree.fit(X, y)
+        print(CT("随机森林:").blue())
+        print("特征重要性：", self.tree.feature_importances_)
+        print("特征重要性降序排序是：")
+        feature_importance = pd.DataFrame({"feature": X.columns, "importance": self.tree.feature_importances_})
+        feature_importance = feature_importance.sort_values(by="importance", ascending=False)
+        print(feature_importance)
+        self.feature_by_importance = feature_importance["feature"].values
+        print("准确率：", self.tree.score(X, y))
+        self.y_pred = self.tree.predict(X)
+        print("分类报告：")
+        classify_report = classification_report(y, self.y_pred)
+        print(classify_report)
+        print(f"混淆矩阵 -- labels = {labels}：")
+        conf_matrix = confusion_matrix(y, self.y_pred, labels=labels)
+        print(conf_matrix)
+
+        ToMd.text_to_md(f"RandomForestClassifier 训练集准确率: {self.tree.score(X, y)}", md_flag, md_color='blue')
+        ToMd.df_to_md(feature_importance, md_flag, md_index=True)
+        ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
+        ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
+
+class KNN(CalData):
+    def __init__(self, df):
+        super().__init__(df)
+
+    def cal_knnC(self, X_name, y_name, k):
+        """
+        knn分类
+        :param X_name:
+        :param y_name:
+        :param k:
+        :return:
+        """
+        X = self.df[X_name]
+        y = pd.Series(self.df[y_name], name=y_name)
+        self._cal_knnC(X, y, k)
+
+    def cal_knnR(self, X_name, y_name, k):
+        """
+        knn回归
+        :param X_name:
+        :param y_name:
+        :param k:
+        :return:
+        """
+        X = self.df[X_name]
+        y = pd.Series(self.df[y_name], name=y_name)
+        self._cal_knnR(X, y, k)
+
+    def _cal_knnC(self, X, y, k):
+        """
+        knn分类
+        :param X:
+        :param y:
+        :param k:
+        :return:
+        """
+        self.knnC = KNeighborsClassifier(n_neighbors=k)
+        self.knnC.fit(X, y)
+
+    def _cal_knnR(self, X, y, k):
+        """
+        knn分类
+        :param X:
+        :param y:
+        :param k:
+        :return:
+        """
+        self.knnR = KNeighborsRegressor(n_neighbors=k)
+        self.knnR.fit(X, y)
 
 
 # 以下是一些废弃的函数，请不要使用

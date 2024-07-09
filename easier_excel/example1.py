@@ -4,6 +4,7 @@
 # 为了尽可能简便，甚至没有划分训练集和测试集，而是直接对全数据进行了处理与分析
 # 数据集中的“模”这一列是妮可少女给出的，计算公式是: 模 = HP + 16*ATK + 10*DEF，其余数据均为游戏内数据。
 import matplotlib.pyplot as plt
+import pandas as pd
 from sklearn.cluster import KMeans
 import easier_excel.read_data as rd  # 这里是历史遗留问题，一般还是建议使用from easier_excel import read_data这样写，不然容易意义不明
 import easier_excel.draw_data as dd
@@ -59,8 +60,13 @@ cal_df.cal_svc(["生命值", "攻击力", "防御力"], '星级', draw_svc=False
 
 print("----------数据处理(决策树)----------")
 cal_df = cd.Tree(df)
-cal_df.cal_tree(["生命值", "攻击力", "防御力"], '星级', criterion='entropy', draw_tree=True)
-cal_df.cal_tree(["生命值", "攻击力", "防御力"], '星级', criterion='gini', draw_tree=True)
+cal_df.cal_tree(["生命值", "攻击力", "防御力"], '星级', criterion='entropy', draw_tree=True, pos_label=5)
+cal_df.cal_tree(["生命值", "攻击力", "防御力"], '星级', criterion='gini', draw_tree=True, pos_label=5)
+
+print("----------数据处理(KNN)----------")
+cal_df = cd.KNN(df)
+cal_df.cal_knnC(["生命值", "攻击力", "防御力"], '星级', k=3)
+print(cal_df.knnC.predict(df[["生命值", "攻击力", "防御力"]]))  # 因为没有给验证集，所以这里以训练集来预测，只是为了展示效果
 
 exit(111)
 print("----------数据分析(绘图)----------")  # 绘图部分代码正在重构中
