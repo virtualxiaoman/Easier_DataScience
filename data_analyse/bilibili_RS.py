@@ -1,4 +1,7 @@
 # Hands On bilibili Recommend System 动手实现b站的推荐系统(非官方)
+# 这是第一部分，主要是研究数据的一些基础特征，以及尝试一些简单的机器学习算法，看看准确率什么的
+# 这部分可能比较乱，建议看文档
+
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import SMOTE
@@ -10,7 +13,7 @@ from easier_tools.to_md import ToMd
 ToMd.path = "output/bilibili_RS/Bili_RS.md"  # 更改输出路径
 ToMd = ToMd()
 ToMd.update_path()  # 这是更改path需要做的必要更新
-ToMd.clear_md(auto_clear=True)  # 清空前如有需要，务必备份
+ToMd.clear_md()  # 清空前如有需要，务必备份，默认不清空
 
 model_path = "output/bilibili_RS/model"
 
@@ -52,7 +55,9 @@ print(df_origin[df_origin['like_rate'] > 1])
 df_origin = df_origin[df_origin['like_rate'] <= 1]  # 这个顺带把缺失值的行也删了
 desc_df = read_data.desc_df(df_origin)
 desc_df.describe_df(stats_detailed=False)  # 发现已经没有缺失值了
-desc_df.process_outlier(method='IQR', show_info=True, process_type='ignore', md_flag=True)
+desc_df.process_outlier(method='IQR', show_info=True, process_type='ignore', md_flag=True)  # 暂不处理异常值，因为这里都是真实数据
+desc_df.show_df(head_n=0, tail_n=0, show_columns=False, show_dtypes=False, md_flag=True)  # 该行只是为了写入到md文件
+desc_df.describe_df(stats_detailed=False, show_stats=False, show_nan=False, md_flag=True)  # 该行只是为了写入到md文件
 
 print(CT("----------选择数值型数据----------").pink())
 ToMd.text_to_md(md_text="3. 线性回归等机器学习算法", md_flag=True, md_color="pink", md_h=1)
@@ -191,7 +196,7 @@ ToMd.text_to_md(md_text="划分训练集与验证集训练，模型GBDT", md_fla
 cal_df = cal_data.GBDT(train_dataset)
 cal_df.cal_gbdtC(feature_important, 'u_score', pos_label=1, md_flag=True)
 print(f"划分训练集与验证集训练的gbdt准确率：{cal_df.gbdt.score(X_test, y_test)}")
-ToMd.text_to_md(md_text=f"划分训练集与验证集训练的gbdt准确率：{cal_df.gbdt.score(X_test, y_test)}", md_flag=True)
+ToMd.text_to_md(md_text=f"划分训练集与验证集训练的gbdt准确率：{cal_df.gbdt.score(X_test, y_test)}", md_flag=True, md_color="orange")
 # 查看验证集中预测为1实际为0与预测为0实际为1的情况
 df_temp_1to0 = df_origin.loc[test_dataset[(cal_df.gbdt.predict(X_test) == 1) & (y_test == 0)].index]
 df_temp_0to1 = df_origin.loc[test_dataset[(cal_df.gbdt.predict(X_test) == 0) & (y_test == 1)].index]
@@ -205,7 +210,7 @@ ToMd.text_to_md(md_text="使用feature-important，模型logistic", md_flag=True
 cal_df = cal_data.Linear(df_num[feature_important + ['u_score']])
 cal_df.cal_logistic(feature_important, 'u_score', pos_label=1, md_flag=True)
 print(cal_df.weight)
-# 注意到模型把1全部预测为了0，因此需要进一步处理，可以尝试重采样
+# 注意到模型把1全部预测为了0，所以需要进一步处理，可以尝试重采样
 # 重采样的方法有很多，这里使用SMOTE
 
 print(CT("----------[重采样]----------").pink())

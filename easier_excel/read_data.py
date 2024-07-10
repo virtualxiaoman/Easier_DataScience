@@ -2,15 +2,19 @@ import cv2
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+
 import numpy as np
 from numpy.polynomial.polynomial import Polynomial
+
+from imblearn.over_sampling import SMOTE
+
 from scipy import stats
 from scipy.interpolate import interp1d, interp2d, lagrange, RectBivariateSpline, griddata, Rbf  # interp2d已被弃用
+
 from sklearn.experimental import enable_iterative_imputer  # 为了使用IterativeImputer，需要导入这个
 from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import PowerTransformer
-
+from sklearn.preprocessing import PowerTransformer, StandardScaler, MinMaxScaler
 from easier_excel.utils import DFUtils
 from easier_tools.Colorful_Console import func_warning as func_w
 from easier_tools.Colorful_Console import func_error as func_e
@@ -82,6 +86,14 @@ class desc_df(DFUtils):
         self.numeric_stats = None  # 数据描述
         self.missing_info = None  # 缺失值信息
         self.outlier_info = None  # 异常值信息
+
+        self.demeaned_df = None  # 去均值化
+        self.normalized_df = None  # 标准化
+        self.minmax_df = None  # 归一化
+        self.zscore_df = None  # 标准化
+        self.boxcox_df = None  # Box-Cox变换
+        self.yeo_johnson_df = None  # Yeo-Johnson变换
+        self.smote_df = None  # SMOTE处理后的数据
 
     # 展示数据
     def show_df(self, head_n=0, tail_n=0, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False, md_flag=False):
@@ -225,8 +237,7 @@ class desc_df(DFUtils):
         :return: 删除缺失值后的df(这在选用inplace=False时有用)
         """
         temp_df = self.df.dropna(axis=axis, how=how, inplace=inplace)
-        # 下面这行是为了更新self.missing_info，便于在外部调用delete_missing_values后能直接查看修改后的self.missing_info的值
-        self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
+        self.update_desc_df()
         return temp_df  # 返回删除缺失值后的df(这在选用inplace=False时有用)
 
     # 填充缺失值
@@ -290,11 +301,11 @@ class desc_df(DFUtils):
         #         mean_value = self.df[col].mean()
         #         self.df[col].fillna(mean_value, inplace=True)  # 用均值填充缺失值
 
-        # 下面这一行是为了更新self.missing_info，便于在外部调用fill_missing_values后能直接查看修改后的self.missing_info的值
-        self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
+        self.update_desc_df()
 
     # 处理异常值
-    def process_outlier(self, method='IQR', process_type='delete', show_info=False, md_flag=False):
+    def process_outlier(self, method='IQR', process_type='delete', show_info=False,
+                        IQR_Q1=0.25, IQR_Q3=0.75, IQR_k=1.5, Zscore_threshold=3, md_flag=False):
         """
         处理异常值
         [Warning]:
@@ -320,13 +331,13 @@ class desc_df(DFUtils):
                    modify_tip="请检查method是否正确")
             method = 'IQR'
         if method == 'IQR':
-            Q1 = self.df_numeric.quantile(0.25)  # 返回的是一个Series
-            Q3 = self.df_numeric.quantile(0.75)
+            Q1 = self.df_numeric.quantile(IQR_Q1)  # 返回的是一个Series
+            Q3 = self.df_numeric.quantile(IQR_Q3)
             IQR = Q3 - Q1
-            lower_bound = Q1 - 1.5 * IQR
-            upper_bound = Q3 + 1.5 * IQR
+            lower_bound = Q1 - IQR_k * IQR
+            upper_bound = Q3 + IQR_k * IQR
         elif method == 'Z-score':
-            threshold = 3
+            threshold = Zscore_threshold
             Z_scores = np.abs((self.df_numeric - self.df_numeric.mean()) / self.df_numeric.std())  # 返回的是一个DataFrame
             # 返回的是一个布尔值的DataFrame，True表示异常值
             outliers = Z_scores > threshold
@@ -366,13 +377,12 @@ class desc_df(DFUtils):
         # 合并
         self.df = pd.concat([self.df_numeric, self.df_non_numeric], axis=1)
 
-        # 下面这一行是为了更新self.missing_info，便于在外部调用fill_missing_values后能直接查看修改后的self.missing_info的值
-        self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
+        self.update_desc_df()
 
         # 输出为md
         ToMd.df_to_md(self.outlier_info, md_flag, md_index=True)
 
-    def transform_df(self, minmax=(0, 1)):
+    def transform_df(self, minmax=(0, 1), smote_target=None):
         """
         数据转换，包括中心化(去均值)，标准化(Z分数)，归一化(minmax)
         得到:
@@ -386,18 +396,41 @@ class desc_df(DFUtils):
             避免某些特征对模型的影响过大，从而提高模型的准确性和泛化能力。归一化可使所有特征具有相似的尺度。
         """
         self.demeaned_df = self.df_numeric - self.df_numeric.mean()
-        self.zscore_df = (self.df_numeric - self.df_numeric.mean()) / self.df_numeric.std()
-        self.minmax_df = (minmax[1] - minmax[0]) * (self.df_numeric - self.df_numeric.min()) / \
-                         (self.df_numeric.max() - self.df_numeric.min()) + minmax[0]
-        if (self.df_numeric < 0).any().any():
-            func_w(self.transform_df,
-                   warning_text="数据中有负数项，无法进行boxcox",
-                   modify_tip="请检查数据是否有负数项")
-        else:
-            pt = PowerTransformer(method='box-cox')
-            self.boxcox_df = pt.fit_transform(self.df_numeric)
-        pt = PowerTransformer(method='yeo-johnson')
-        self.yeojohnson_df = pt.fit_transform(self.df_numeric)
+        # self.zscore_df = (self.df_numeric - self.df_numeric.mean()) / self.df_numeric.std()
+        # self.minmax_df = (minmax[1] - minmax[0]) * (self.df_numeric - self.df_numeric.min()) / \
+        #                  (self.df_numeric.max() - self.df_numeric.min()) + minmax[0]
+        scaler = StandardScaler()
+        self.zscore_df = pd.DataFrame(scaler.fit_transform(self.df_numeric), columns=self.df_numeric.columns, index=self.df_numeric.index)
+
+        minmax_scaler = MinMaxScaler(feature_range=minmax)
+        self.minmax_df = pd.DataFrame(minmax_scaler.fit_transform(self.df_numeric), columns=self.df_numeric.columns, index=self.df_numeric.index)
+
+        if smote_target is not None:
+            smote = SMOTE(random_state=42)
+            X = self.df_numeric.drop([smote_target], axis=1)
+            y = self.df_numeric[smote_target]
+            X_smote, y_smote = smote.fit_resample(X, y)
+            self.smote_df = pd.concat([X_smote, y_smote], axis=1)
+            self.smote_df.index = range(len(self.smote_df))  # 重置索引
+
+        # 下面的用的不多，暂时注释掉。而且可能报错RuntimeWarning: overflow encountered in multiply x = um.multiply(x, x, out=x)
+        # if (self.df_numeric < 0).any().any():
+        #     func_w(self.transform_df,
+        #            warning_text="数据中有负数项，无法进行boxcox",
+        #            modify_tip="请检查数据是否有负数项")
+        # else:
+        #     pt = PowerTransformer(method='box-cox')
+        #     self.boxcox_df = pt.fit_transform(self.df_numeric)
+        #
+        # pt = PowerTransformer(method='yeo-johnson')
+        # self.yeojohnson_df = pt.fit_transform(self.df_numeric)
+
+    def update_desc_df(self):
+        """
+        更新df的相关数据
+        """
+        self.show_df(head_n=0, tail_n=0, show_shape=False, show_columns=False, show_dtypes=False, dtypes_T=False)
+        self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
 
 
 # 一些可能的读入方法以作为记录

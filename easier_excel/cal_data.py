@@ -17,7 +17,8 @@ from statsmodels.stats.stattools import durbin_watson
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC, SVR
 from sklearn.preprocessing import PolynomialFeatures
-from sklearn.metrics import roc_curve, auc, classification_report, matthews_corrcoef, hamming_loss, confusion_matrix
+from sklearn.metrics import roc_curve, auc, classification_report, matthews_corrcoef, hamming_loss, confusion_matrix, \
+    f1_score
 from sklearn import tree
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingClassifier, GradientBoostingRegressor
@@ -55,6 +56,10 @@ class CalData:
     def __init__(self, df):
         self.df = df
         self.y_pred = None  # 预测值，np.ndarray类型
+        self.ACC = None  # 准确率，float类型
+        self.F1_weight = None  # F1分数，float类型，取各类别F1分数的加权平均值
+        self.F1_unweighted = None  # F1分数，float类型，取各类别F1分数的平均值
+        self.MSE = None  # 均方误差MSE，float类型
 
     @staticmethod
     # 判断文本中是否含有中文字符
@@ -100,7 +105,7 @@ class Linear(CalData):
         self.dagostino_pvalue = None  # D'Agostino's K² P值，float类型
         self.durbin_watson_statistic = None  # Durbin-Watson统计量，float类型
 
-    def cal_linear(self, X_name, y_name, use_bias=True, **kwargs):
+    def cal_linear(self, X_name, y_name, use_bias=True, detailed=True, **kwargs):
         """
         线性回归。
         公式：y = X @ w + b
@@ -119,7 +124,7 @@ class Linear(CalData):
         y = self.df[y_name].values.reshape(-1, 1)
         self._cal_linear(X, y, use_bias, **kwargs)
 
-    def cal_logistic(self, X_name, y_name, use_bias=True, pos_label=1, **kwargs):
+    def cal_logistic(self, X_name, y_name, use_bias=True, pos_label=1, detailed=True, **kwargs):
         """
         逻辑回归。
         公式：y = 1 / (1 + exp(-X @ w + b))
@@ -136,7 +141,8 @@ class Linear(CalData):
         y = self.df[y_name].values.reshape(-1, )
         self._cal_logistic(X, y, use_bias, pos_label, **kwargs)
 
-    def cal_poly(self, X_name, y_name, degree=2, include_linear_bias=False, include_poly_bias=False, **kwargs):
+    def cal_poly(self, X_name, y_name, degree=2, include_linear_bias=False, include_poly_bias=False, detailed=True,
+                 **kwargs):
         """
         多项式回归。因为使用的不多，这里不进行统计量的计算与检验，仅给出模型的拟合。
         [Tips]:
@@ -161,7 +167,7 @@ class Linear(CalData):
         y = self.df[y_name].values.reshape(-1, 1)
         self._cal_poly(X, y, degree, include_linear_bias, include_poly_bias,  **kwargs)
 
-    def _cal_linear(self, X, y, use_bias=True, md_flag=False, **kwargs):
+    def _cal_linear(self, X, y, use_bias=True, detailed=True, md_flag=False, **kwargs):
         """
         线性回归
         :param X: np.ndarray，输入特征。
@@ -190,18 +196,19 @@ class Linear(CalData):
         self.MSE = np.mean(self.residuals ** 2)
         self.RMSE = math.sqrt(self.MSE)
 
-        # 线性：计算R²和调整后的R²
-        self.__check_linearity(X, y, self.lin_reg, md_flag)
-        # 同方差性: 使用Breusch-Pagan检验
-        self.__check_homoscedasticity(X, y, md_flag)
-        # 正态性: 使用Shapiro-Wilk检验和D'Agostino's K²检验
-        self.__check_normality(self.residuals, md_flag)
-        # 自相关性: 使用Durbin-Watson检验
-        self.__check_autocorrelation(self.residuals, md_flag)
-        # 多重共线性: 使用VIF检测
-        self.__check_multicollinearity(X, use_bias, md_flag)
+        if detailed:
+            # 线性：计算R²和调整后的R²
+            self.__check_linearity(X, y, self.lin_reg, md_flag)
+            # 同方差性: 使用Breusch-Pagan检验
+            self.__check_homoscedasticity(X, y, md_flag)
+            # 正态性: 使用Shapiro-Wilk检验和D'Agostino's K²检验
+            self.__check_normality(self.residuals, md_flag)
+            # 自相关性: 使用Durbin-Watson检验
+            self.__check_autocorrelation(self.residuals, md_flag)
+            # 多重共线性: 使用VIF检测
+            self.__check_multicollinearity(X, use_bias, md_flag)
 
-    def _cal_logistic(self, X, y, use_bias=True, pos_label=1, draw_roc=False, md_flag=False):
+    def _cal_logistic(self, X, y, use_bias=True, pos_label=1, draw_roc=False, detailed=True, md_flag=False):
         """
         逻辑回归
         :param X: np.ndarray，输入特征。
@@ -220,9 +227,13 @@ class Linear(CalData):
         print("偏置参数：", self.log_reg.intercept_)  # b
         print("权重参数：", self.log_reg.coef_)  # w, shape:(C, D)。C是类别数，D是特征数
         print("类别：", self.log_reg.classes_)  # 类别
-        print("准确率：", self.log_reg.score(X, y))
+        self.ACC = self.log_reg.score(X, y)
+        print("准确率：", self.ACC)
+        self.y_pred = self.log_reg.predict(X)  # 预测值
+        self.y_pred_prob = self.log_reg.predict_proba(X)[:, 1]  # 预测概率
+        self.F1_weight = f1_score(y, self.y_pred, average='weighted')  # F1分数
+        self.F1_unweighted = f1_score(y, self.y_pred, average="macro")
 
-        print("----------------------")
         # 如果是二分类
         if len(labels) == 2:
             # 二分类的权重
@@ -245,9 +256,6 @@ class Linear(CalData):
         ToMd.text_to_md("逻辑回归权重", md_flag)
         ToMd.df_to_md(self.weight, md_flag, md_index=True)
 
-        self.y_pred = self.log_reg.predict(X)  # 预测值
-        self.y_pred_prob = self.log_reg.predict_proba(X)[:, 1]  # 预测概率
-
         print("分类报告：")
         classify_report = classification_report(y, self.y_pred)
         print(classify_report)
@@ -255,7 +263,7 @@ class Linear(CalData):
         conf_matrix = confusion_matrix(y, self.y_pred, labels=labels)
         print(conf_matrix)
 
-        ToMd.text_to_md(f"LogisticRegression 训练集准确率: {self.log_reg.score(X, y)}", md_flag, md_color='blue')
+        ToMd.text_to_md(f"LogisticRegression 训练集准确率: {self.ACC}", md_flag, md_color='blue')
         ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
         ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
 
@@ -265,24 +273,25 @@ class Linear(CalData):
         self.MSE = np.mean(self.residuals ** 2)
         self.RMSE = math.sqrt(self.MSE)
 
-        # 线性：计算R²和调整后的R²
-        self.__check_linearity(X, y, self.log_reg, md_flag)
-        # 同方差性: 使用Breusch-Pagan检验
-        self.__check_homoscedasticity(X, y, md_flag)
-        # 正态性: 使用Shapiro-Wilk检验和D'Agostino's K²检验
-        self.__check_normality(self.residuals, md_flag)
-        # 自相关性: 使用Durbin-Watson检验
-        self.__check_autocorrelation(self.residuals, md_flag)
-        # 多重共线性: 使用VIF检测
-        self.__check_multicollinearity(X, use_bias, md_flag)
-        # 计算MCC值
-        self.__check_mcc(y, self.y_pred, md_flag)
-        # 计算汉明损失
-        self.__check_hamming_loss(y, self.y_pred, md_flag)
-        # 计算ROC曲线和AUC值
-        self.__check_auc(X, y, self.log_reg, pos_label, draw_roc, md_flag)
+        if detailed:
+            # 线性：计算R²和调整后的R²
+            self.__check_linearity(X, y, self.log_reg, md_flag)
+            # 同方差性: 使用Breusch-Pagan检验
+            self.__check_homoscedasticity(X, y, md_flag)
+            # 正态性: 使用Shapiro-Wilk检验和D'Agostino's K²检验
+            self.__check_normality(self.residuals, md_flag)
+            # 自相关性: 使用Durbin-Watson检验
+            self.__check_autocorrelation(self.residuals, md_flag)
+            # 多重共线性: 使用VIF检测
+            self.__check_multicollinearity(X, use_bias, md_flag)
+            # 计算MCC值
+            self.__check_mcc(y, self.y_pred, md_flag)
+            # 计算汉明损失
+            self.__check_hamming_loss(y, self.y_pred, md_flag)
+            # 计算ROC曲线和AUC值
+            self.__check_auc(X, y, self.log_reg, pos_label, draw_roc, md_flag)
 
-    def _cal_poly(self, X, y, degree=2, include_linear_bias=False, include_poly_bias=False, md_flag=False):
+    def _cal_poly(self, X, y, degree=2, include_linear_bias=False, include_poly_bias=False, detailed=True, md_flag=False):
         """
         多项式回归
         :param X: np.ndarray，输入特征。
@@ -300,7 +309,13 @@ class Linear(CalData):
         print("偏置参数：", self.lin_reg.intercept_)  # b
         print("权重参数：", self.lin_reg.coef_)  # w
         print("特征名称：", self.poly_features.get_feature_names_out())
+
         self.y_pred = self.lin_reg.predict(X_poly)  # 预测值
+        self.residuals = y - self.y_pred  # 残差
+        self.MAE = np.mean(np.abs(self.residuals))
+        self.MSE = np.mean(self.residuals ** 2)
+        self.RMSE = math.sqrt(self.MSE)
+
         # 权重DataFrame
         self.weight = pd.DataFrame({"feature": self.poly_features.get_feature_names_out(),
                                     "weight": self.lin_reg.coef_[0]})
@@ -604,9 +619,12 @@ class SVM(CalData):
             print("权重参数：", self.svc.coef_)
         print("偏置参数：", self.svc.intercept_)
         print("类别：", self.svc.classes_)
-        print("准确率：", self.svc.score(X, y))
-        ToMd.text_to_md(f"SVC 准确率: {self.svc.score(X, y)}", md_flag, md_color='blue')
+        self.ACC = self.svc.score(X, y)
+        print("准确率：", self.ACC)
+        ToMd.text_to_md(f"SVC 准确率: {self.ACC}", md_flag, md_color='blue')
         self.y_pred = self.svc.predict(X)  # 预测值
+        self.F1_weight = f1_score(y, self.y_pred, average='weighted')  # F1分数
+        self.F1_unweighted = f1_score(y, self.y_pred, average="macro")
         if draw_svc:
             # 绘制SVM
             if X.shape[1] > 2:
@@ -671,9 +689,14 @@ class SVM(CalData):
             print("权重参数：", self.svr.coef_)
         print("偏置参数：", self.svr.intercept_)
         print("R²分数：", self.svr.score(X, y))  # R^2分数越接近1，表示模型拟合得越好
+        self.y_pred = self.svr.predict(X)  # 预测值
+        self.residuals = y - self.y_pred  # 残差
+        self.MAE = np.mean(np.abs(self.residuals))
+        self.MSE = np.mean(self.residuals ** 2)
+        self.RMSE = math.sqrt(self.MSE)
+
         ToMd.text_to_md(f"SVR R²分数: {self.svr.score(X, y)}", md_flag, md_color='blue')
-        self.y_pred = self.svr.predict(X)
-        self.residuals = y - self.y_pred
+
         if draw_svr:
             # 绘制SVR的拟合曲线
             # 如果X超过了一维，就只绘制第一个特征
@@ -758,8 +781,11 @@ class Tree(CalData):
         self.tree.fit(X, y)
         print(CT("决策树:").blue())
         print("特征重要性：", self.tree.feature_importances_)
-        print("准确率：", self.tree.score(X, y))
+        self.ACC = self.tree.score(X, y)
+        print("准确率：", self.ACC)
         self.y_pred = self.tree.predict(X)
+        self.F1_weight = f1_score(y, self.y_pred, average='weighted')  # F1分数
+        self.F1_unweighted = f1_score(y, self.y_pred, average="macro")
 
         print("分类报告：")
         classify_report = classification_report(y, self.y_pred)
@@ -768,7 +794,7 @@ class Tree(CalData):
         conf_matrix = confusion_matrix(y, self.y_pred, labels=labels)
         print(conf_matrix)
 
-        ToMd.text_to_md(f"DecisionTreeClassifier 训练集准确率: {self.tree.score(X, y)}", md_flag, md_color='blue')
+        ToMd.text_to_md(f"DecisionTreeClassifier 训练集准确率: {self.ACC}", md_flag, md_color='blue')
         ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
         ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
         # 绘制决策树
@@ -806,8 +832,12 @@ class Tree(CalData):
         feature_importance = feature_importance.sort_values(by="importance", ascending=False)
         print(feature_importance)
         self.feature_by_importance = feature_importance["feature"].values.tolist()
-        print("准确率：", self.tree.score(X, y))
+        self.ACC = self.tree.score(X, y)
+        print("准确率：", self.ACC)
         self.y_pred = self.tree.predict(X)
+        self.F1_weight = f1_score(y, self.y_pred, average='weighted')  # F1分数
+        self.F1_unweighted = f1_score(y, self.y_pred, average="macro")
+
         print("分类报告：")
         classify_report = classification_report(y, self.y_pred)
         print(classify_report)
@@ -815,7 +845,7 @@ class Tree(CalData):
         conf_matrix = confusion_matrix(y, self.y_pred, labels=labels)
         print(conf_matrix)
 
-        ToMd.text_to_md(f"RandomForestClassifier 训练集准确率: {self.tree.score(X, y)}", md_flag, md_color='blue')
+        ToMd.text_to_md(f"RandomForestClassifier 训练集准确率: {self.ACC}", md_flag, md_color='blue')
         ToMd.df_to_md(feature_importance, md_flag, md_index=True)
         ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
         ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
@@ -891,8 +921,12 @@ class GBDT(CalData):
         print(feature_importance)
         self.feature_by_importance = feature_importance["feature"].values.tolist()
         print(self.feature_by_importance)
-        print("准确率：", self.gbdt.score(X, y))
+        self.ACC = self.gbdt.score(X, y)
+        print("准确率：", self.ACC)
         self.y_pred = self.gbdt.predict(X)
+        self.F1_weight = f1_score(y, self.y_pred, average='weighted')  # F1分数
+        self.F1_unweighted = f1_score(y, self.y_pred, average="macro")
+
         print("分类报告：")
         classify_report = classification_report(y, self.y_pred)
         print(classify_report)
@@ -900,7 +934,7 @@ class GBDT(CalData):
         conf_matrix = confusion_matrix(y, self.y_pred, labels=labels)
         print(conf_matrix)
 
-        ToMd.text_to_md(f"GradientBoostingClassifier 训练集准确率: {self.gbdt.score(X, y)}", md_flag, md_color='blue')
+        ToMd.text_to_md(f"GradientBoostingClassifier 训练集准确率: {self.ACC}", md_flag, md_color='blue')
         ToMd.df_to_md(feature_importance, md_flag, md_index=True)
         ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
         ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
@@ -942,6 +976,9 @@ class GBDT(CalData):
         print("R²分数：", self.gbdt.score(X, y))
         self.y_pred = self.gbdt.predict(X)
         self.residuals = y - self.y_pred
+        self.MAE = np.mean(np.abs(self.residuals))
+        self.MSE = np.mean(self.residuals ** 2)
+        self.RMSE = math.sqrt(self.MSE)
 
         ToMd.text_to_md(f"GradientBoostingRegressor R²分数: {self.gbdt.score(X, y)}", md_flag, md_color='blue')
         if draw_gbdt:
@@ -964,7 +1001,6 @@ class GBDT(CalData):
                     plt.ylabel(y.name)
             plt.show()
             plt.close()
-
 
 
 class KNN(CalData):

@@ -12,19 +12,16 @@ class ToMd:
         pass
 
     # 清空md
-    def clear_md(self, auto_clear=False):
-        if not auto_clear:
-            ans = input("是否确认删除之前的md文件, y/n: ")
-            if ans == 'Y' or ans == 'y':
-                print("正在清空")
-            else:
-                raise ValueError("清先保留最初的md文件，再重新运行且选择y，或者手动取消这个ValueError")
-        with open(self.path, 'w', encoding='utf-8') as file:
-            file.seek(0)
-            file.truncate()
-        for filename in os.listdir(self.pic_dir):
-            file_path = os.path.join(self.pic_dir, filename).replace('\\', '/')
-            os.remove(file_path)
+    def clear_md(self, clear_md=True, clear_pic=False):
+        # 不建议clear_pic，因为不能确保其他md的图片不会被删除
+        if clear_md:
+            with open(self.path, 'w', encoding='utf-8') as file:
+                file.seek(0)
+                file.truncate()
+        if clear_pic:
+            for filename in os.listdir(self.pic_dir):
+                file_path = os.path.join(self.pic_dir, filename).replace('\\', '/')
+                os.remove(file_path)
 
     # text -> md
     def text_to_md(self, md_text=None, md_flag=False, md_bold=False, md_color=None, md_h=None, **kwargs):
