@@ -12,6 +12,7 @@ from scipy.stats import shapiro, kstest, normaltest, anderson, chisquare
 import statsmodels.api as sm
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.stats.diagnostic import het_breuschpagan
+from statsmodels.stats.stattools import durbin_watson
 
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC, SVR
@@ -19,7 +20,10 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.metrics import roc_curve, auc, classification_report, matthews_corrcoef, hamming_loss, confusion_matrix
 from sklearn import tree
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingClassifier, GradientBoostingRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.feature_selection import SelectKBest, chi2, f_classif, f_regression
+
 
 import torch
 from torch import nn
@@ -177,6 +181,7 @@ class Linear(CalData):
         self.weight = pd.DataFrame({"feature": X.columns, "weight": self.lin_reg.coef_[0]})
         bias_df = pd.DataFrame({"feature": ["bias"], "weight": self.lin_reg.intercept_})
         self.weight = pd.concat([bias_df, self.weight], ignore_index=True)
+        ToMd.text_to_md("线性回归权重", md_flag)
         ToMd.df_to_md(self.weight, md_flag, md_index=True)
 
         # 计算部分统计量
@@ -218,11 +223,26 @@ class Linear(CalData):
         print("准确率：", self.log_reg.score(X, y))
 
         print("----------------------")
-        intercept_reshaped = self.log_reg.intercept_.reshape(1, -1)  # (C,) -> (1,C)
-        coef_with_bias = np.vstack([intercept_reshaped, np.array(self.log_reg.coef_).T])  # (1,C) + (D,C) -> (D+1,C)
-        features_with_bias = ["bias"] + X.columns.tolist()  # (D,) -> (D,) -> (D+1,)
-        # self.weight的shape是(D+1,C)，加上 index(features_with_bias) 和 columns(self.log_reg.classes_)
-        self.weight = pd.DataFrame(coef_with_bias, index=features_with_bias, columns=self.log_reg.classes_)
+        # 如果是二分类
+        if len(labels) == 2:
+            # 二分类的权重
+            self.weight = pd.DataFrame({"feature": X.columns, "weight": self.log_reg.coef_[0]})
+            print(self.weight)
+            bias_df = pd.DataFrame({"feature": ["bias"], "weight": self.log_reg.intercept_})
+            print(bias_df)
+            self.weight = pd.concat([bias_df, self.weight], ignore_index=True)
+        else:
+            # 多分类的权重
+            intercept_reshaped = self.log_reg.intercept_.reshape(1, -1)  # (C,) -> (1,C)
+            coef_with_bias = np.vstack([intercept_reshaped, np.array(self.log_reg.coef_).T])  # (1,C) + (D,C) -> (D+1,C)
+            features_with_bias = ["bias"] + X.columns.tolist()  # (D,) -> (D,) -> (D+1,)
+            print(intercept_reshaped.shape)
+            print(np.array(self.log_reg.coef_).T.shape)
+            print(coef_with_bias.shape)
+            print(features_with_bias)
+            # self.weight的shape是(D+1,C)，加上 index(features_with_bias) 和 columns(self.log_reg.classes_)
+            self.weight = pd.DataFrame(coef_with_bias, index=features_with_bias, columns=self.log_reg.classes_)
+        ToMd.text_to_md("逻辑回归权重", md_flag)
         ToMd.df_to_md(self.weight, md_flag, md_index=True)
 
         self.y_pred = self.log_reg.predict(X)  # 预测值
@@ -235,7 +255,7 @@ class Linear(CalData):
         conf_matrix = confusion_matrix(y, self.y_pred, labels=labels)
         print(conf_matrix)
 
-        ToMd.text_to_md(f"RandomForestClassifier 训练集准确率: {self.log_reg.score(X, y)}", md_flag, md_color='blue')
+        ToMd.text_to_md(f"LogisticRegression 训练集准确率: {self.log_reg.score(X, y)}", md_flag, md_color='blue')
         ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
         ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
 
@@ -286,6 +306,7 @@ class Linear(CalData):
                                     "weight": self.lin_reg.coef_[0]})
         bias_df = pd.DataFrame({"feature": ["bias"], "weight": self.lin_reg.intercept_})
         self.weight = pd.concat([bias_df, self.weight], ignore_index=True)
+        ToMd.text_to_md("多项式回归权重", md_flag)
         ToMd.df_to_md(self.weight, md_flag, md_index=True)
 
     # 绘制ROC曲线
@@ -322,7 +343,7 @@ class Linear(CalData):
         self.adjusted_R_squared = 1 - (1 - self.R_squared) * ((n - 1) / (n - p - 1))
 
         print(f"R²: {self.R_squared}, 调整后的R²: {self.adjusted_R_squared}")
-        ToMd.text_to_md(f"线性回归的公式是： $ {formula1} $, $ {formula2} $", md_flag)
+        ToMd.text_to_md(f"R²的公式是： $ {formula1} $, $ {formula2} $", md_flag)
         ToMd.text_to_md(f"R²: {self.R_squared}, 调整后的R²: {self.adjusted_R_squared}", md_flag)
 
         if self.R_squared > 0.7:
@@ -513,7 +534,7 @@ class SVM(CalData):
         self.y_pred = None  # 预测值，np.ndarray类型
         self.residuals = None  # 残差，np.ndarray类型
 
-    def cal_svc(self, X_name, y_name, draw_svc=False, **kwargs):
+    def cal_svc(self, X_name, y_name, draw_svc=False, md_flag=False, **kwargs):
         """
         支持向量机
         :param X_name: str或list，输入特征的列名。
@@ -538,9 +559,9 @@ class SVM(CalData):
         """
         X = self.df[X_name]
         y = pd.Series(self.df[y_name], name=y_name)  # 我也不知道为什么不指定name就没name了，不过也只影响绘图
-        self._cal_svc(X, y, draw_svc, **kwargs)
+        self._cal_svc(X, y, draw_svc, md_flag, **kwargs)
 
-    def cal_svr(self, X_name, y_name, draw_svr=False, **kwargs):
+    def cal_svr(self, X_name, y_name, draw_svr=False, md_flag=False, **kwargs):
         """
         支持向量回归
         :param X_name: str或list，输入特征的列名。
@@ -561,7 +582,7 @@ class SVM(CalData):
         """
         X = self.df[X_name]
         y = pd.Series(self.df[y_name], name=y_name)  # 我也不知道为什么不指定name就没name了，不过也只影响绘图
-        self._cal_svr(X, y, draw_svr, **kwargs)
+        self._cal_svr(X, y, draw_svr, md_flag, **kwargs)
 
     def _cal_svc(self, X, y, draw_svc, md_flag, **kwargs):
         """
@@ -784,7 +805,7 @@ class Tree(CalData):
         feature_importance = pd.DataFrame({"feature": X.columns, "importance": self.tree.feature_importances_})
         feature_importance = feature_importance.sort_values(by="importance", ascending=False)
         print(feature_importance)
-        self.feature_by_importance = feature_importance["feature"].values
+        self.feature_by_importance = feature_importance["feature"].values.tolist()
         print("准确率：", self.tree.score(X, y))
         self.y_pred = self.tree.predict(X)
         print("分类报告：")
@@ -798,6 +819,153 @@ class Tree(CalData):
         ToMd.df_to_md(feature_importance, md_flag, md_index=True)
         ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
         ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
+
+
+class GBDT(CalData):
+    def __init__(self, df):
+        super().__init__(df)
+        self.gbdt = None
+        self.y_pred = None
+        self.residuals = None
+        self.feature_by_importance = None
+
+    def cal_gbdtC(self, X_name, y_name, draw_gbdt=False, pos_label=1, **kwargs):
+        """
+        GBDT分类
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param draw_gbdt: bool，是否绘制GBDT的拟合曲线。
+        :param pos_label: int，正类别标签。
+        :param kwargs: 其他参数。包括：
+            loss: Any = "deviance",               # 损失函数，包括{"deviance", "exponential"}
+            learning_rate: Any = 0.1,             # 学习率
+            n_estimators: Any = 100,              # 树的数量
+            subsample: Any = 1.0,                 # 子采样
+            criterion: Any = "friedman_mse",      # 评估节点分裂的标准
+            min_samples_split: Any = 2,           # 内部节点再划分所需最小样本数
+            min_samples_leaf: Any = 1,            # 叶子节点最少样本数
+            min_weight_fraction_leaf: Any = 0.0,  # 叶子节点的样本权重和的最小加权分数
+            max_depth: Any = 3,                   # 树的最大深度
+            min_impurity_decrease: Any = 0.0,     # 分裂节点的最小不纯度
+            max_features: Any = None,             # 每次分裂的最大特征数
+            max_leaf_nodes: Any = None,           # 最大叶子节点数
+            random_state: Any = None,             # 随机种子
+            verbose: Any = 0,                     # 详细输出
+            warm_start: Any = False,              # 是否热启动
+        """
+        X = self.df[X_name]
+        y = self.df[y_name].values
+        self._cal_gbdtC(X, y, draw_gbdt, pos_label, **kwargs)
+
+    def cal_gbdtR(self, X_name, y_name, draw_gbdt=False, **kwargs):
+        """
+        GBDT回归
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param draw_gbdt: bool，是否绘制GBDT的拟合曲线。
+        :param kwargs: 其他参数。包括：
+        """
+        X = self.df[X_name]
+        y = self.df[y_name].values
+        self._cal_gbdtR(X, y, draw_gbdt, **kwargs)
+
+    def _cal_gbdtC(self, X, y, draw_gbdt, pos_label, md_flag=False, **kwargs):
+        """
+        GBDT分类
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param draw_gbdt: bool，是否绘制GBDT的拟合曲线。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        neg_label = [i for i in set(y) if i != pos_label]
+        labels = [pos_label] + neg_label
+
+        self.gbdt = GradientBoostingClassifier(**kwargs)
+        self.gbdt.fit(X, y)
+        print(CT("GBDT-分类:").blue())
+
+        print("特征重要性：", self.gbdt.feature_importances_)
+        feature_importance = pd.DataFrame({"feature": X.columns, "importance": self.gbdt.feature_importances_})
+        feature_importance = feature_importance.sort_values(by="importance", ascending=False)
+        print(feature_importance)
+        self.feature_by_importance = feature_importance["feature"].values.tolist()
+        print(self.feature_by_importance)
+        print("准确率：", self.gbdt.score(X, y))
+        self.y_pred = self.gbdt.predict(X)
+        print("分类报告：")
+        classify_report = classification_report(y, self.y_pred)
+        print(classify_report)
+        print(f"混淆矩阵 -- labels = {labels}：")
+        conf_matrix = confusion_matrix(y, self.y_pred, labels=labels)
+        print(conf_matrix)
+
+        ToMd.text_to_md(f"GradientBoostingClassifier 训练集准确率: {self.gbdt.score(X, y)}", md_flag, md_color='blue')
+        ToMd.df_to_md(feature_importance, md_flag, md_index=True)
+        ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
+        ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
+        if draw_gbdt:
+            # 绘制GBDT的拟合曲线
+            if X.shape[1] > 1:
+                fw(self._cal_gbdtC, "X的维度大于1，无法绘制GBDT-Classification")
+                return None
+            plt.figure()
+            plt.scatter(X, y, c='b')
+            plt.plot(X, self.gbdt.predict(X), c='r', label='GBDT')
+            plt.title("GBDT Classification")
+            if hasattr(X, "columns"):
+                if self.has_chinese(X.columns[0]):
+                    plt.xlabel(X.columns[0], fontproperties='SimSun')
+                else:
+                    plt.xlabel(X.columns[0])
+            if hasattr(y, "name"):
+                if self.has_chinese(y.name):
+                    plt.ylabel(y.name, fontproperties='SimSun')
+                else:
+                    plt.ylabel(y.name)
+            plt.show()
+            plt.close()
+
+    def _cal_gbdtR(self, X, y, draw_gbdt, md_flag=False, **kwargs):
+        """
+        GBDT回归
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param draw_gbdt: bool，是否绘制GBDT的拟合曲线。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        self.gbdt = GradientBoostingRegressor(**kwargs)
+        self.gbdt.fit(X, y)
+        print(CT("GBDT-回归:").blue())
+        print("特征重要性：", self.gbdt.feature_importances_)
+        print("R²分数：", self.gbdt.score(X, y))
+        self.y_pred = self.gbdt.predict(X)
+        self.residuals = y - self.y_pred
+
+        ToMd.text_to_md(f"GradientBoostingRegressor R²分数: {self.gbdt.score(X, y)}", md_flag, md_color='blue')
+        if draw_gbdt:
+            # 绘制GBDT的拟合曲线
+            if X.shape[1] > 1:
+                fw(self._cal_gbdtC, "X的维度大于1，无法绘制GBDT-Classification")
+                return None
+            plt.scatter(X, y, c='b')
+            plt.plot(X, self.y_pred, c='r', label='GBDT')
+            plt.title("GBDT Regression")
+            if hasattr(X, "columns"):
+                if self.has_chinese(X.columns[0]):
+                    plt.xlabel(X.columns[0], fontproperties='SimSun')
+                else:
+                    plt.xlabel(X.columns[0])
+            if hasattr(y, "name"):
+                if self.has_chinese(y.name):
+                    plt.ylabel(y.name, fontproperties='SimSun')
+                else:
+                    plt.ylabel(y.name)
+            plt.show()
+            plt.close()
+
+
 
 class KNN(CalData):
     def __init__(self, df):

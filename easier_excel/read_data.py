@@ -84,7 +84,7 @@ class desc_df(DFUtils):
         self.outlier_info = None  # 异常值信息
 
     # 展示数据
-    def show_df(self, head_n=0, tail_n=0, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False, **kwargs):
+    def show_df(self, head_n=0, tail_n=0, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False, md_flag=False):
         """
         查看数据，请传入DataFrame数据类型的数据。
         一些可能用到的，用于查阅：
@@ -120,15 +120,15 @@ class desc_df(DFUtils):
                 print(self.dtypes)
 
         # 输出到md，在指定md_flag=True时才会执行下面的代码s
-        ToMd.text_to_md("1.1 前5行数据:", md_bold=True, md_color='blue', md_h=2, **kwargs)
-        ToMd.df_to_md(self.df.head(5), **kwargs)
-        ToMd.text_to_md("1.2 Shape: " + str(self.shape), md_bold=True, md_color='blue', md_h=2, **kwargs)
-        ToMd.text_to_md("1.3 数据类型:", md_bold=True, md_color='blue', md_h=2, **kwargs)
-        ToMd.df_to_md(self.dtypes.to_frame().T, **kwargs)
+        ToMd.text_to_md("1.1 前5行数据:", md_flag, md_bold=True, md_color='blue', md_h=2)
+        ToMd.df_to_md(self.df.head(5), md_flag)
+        ToMd.text_to_md("1.2 Shape: " + str(self.shape), md_flag, md_bold=True, md_color='blue', md_h=2)
+        ToMd.text_to_md("1.3 数据类型:", md_flag, md_bold=True, md_color='blue', md_h=2)
+        ToMd.df_to_md(self.dtypes.to_frame().T, md_flag)
 
     # 描述数据
     def describe_df(self, show_stats=True, stats_T=True, stats_detailed=False, show_nan=True, show_nan_heatmap=False,
-                    **kwargs):
+                    md_flag=False):
         """
         输出数据的基本统计信息，以及检测缺失值。
         [使用方法]:
@@ -182,13 +182,13 @@ class desc_df(DFUtils):
             # missingno.matrix(self.df)
 
         # 输出到md
-        ToMd.text_to_md("1.4 描述性统计信息:", md_bold=True, md_color='blue', md_h=2, **kwargs)
-        ToMd.df_to_md(self.numeric_stats, md_index=True, **kwargs)
-        ToMd.text_to_md("1.5 缺失值检测:", md_bold=True, md_color='blue', md_h=2,  **kwargs)
-        ToMd.df_to_md(self.missing_info, md_index=True, **kwargs)
+        ToMd.text_to_md("1.4 描述性统计信息:", md_flag, md_bold=True, md_color='blue', md_h=2)
+        ToMd.df_to_md(self.numeric_stats, md_flag, md_index=True)
+        ToMd.text_to_md("1.5 缺失值检测:", md_flag, md_bold=True, md_color='blue', md_h=2)
+        ToMd.df_to_md(self.missing_info, md_flag, md_index=True)
         plt.figure()
         sns.heatmap(self.df.isna(), cmap='gray_r', cbar_kws={"orientation": "vertical"}, vmin=0, vmax=1)
-        ToMd.pic_to_md(plt, md_title="heatmap", **kwargs)
+        ToMd.pic_to_md(plt, md_flag, md_title="heatmap")
         plt.close()
 
     # 画热力图
@@ -294,7 +294,7 @@ class desc_df(DFUtils):
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
 
     # 处理异常值
-    def process_outlier(self, method='IQR', process_type='delete', show_info=False, **kwargs):
+    def process_outlier(self, method='IQR', process_type='delete', show_info=False, md_flag=False):
         """
         处理异常值
         [Warning]:
@@ -370,7 +370,7 @@ class desc_df(DFUtils):
         self.describe_df(show_stats=False, stats_T=True, stats_detailed=False, show_nan=False)
 
         # 输出为md
-        ToMd.df_to_md(self.outlier_info, md_index=True, **kwargs)
+        ToMd.df_to_md(self.outlier_info, md_flag, md_index=True)
 
     def transform_df(self, minmax=(0, 1)):
         """
