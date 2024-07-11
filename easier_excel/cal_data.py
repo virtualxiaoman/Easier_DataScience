@@ -1382,8 +1382,11 @@ class Cluster(CalData):
         """
         计算评价指标
         s(i)=\frac{b(i)-a(i)}{\max \{a(i), b(i)\}}
+        轮廓系数的取值范围是 [-1, 1]，值越大表示聚类效果越好。
         ARI = (RI - Expected_RI) / (max(RI) - Expected_RI)
+        调整兰德指数的取值范围是 [-1, 1]，值越大表示聚类效果越好。
         I(U ; V)=\sum_{i=1}^{|U|} \sum_{j=1}^{|V|} p_{i j} \log \left(\frac{p_{i j}}{p_{i} p_{j}}\right)
+        互信息评分的取值范围是 [0, 1]，值越大表示聚类效果越好。
         :param X: np.ndarray，输入特征。
         :param y: np.ndarray，输出标签。
         :param y_pred: np.ndarray，聚类预测标签。
@@ -1472,6 +1475,7 @@ class Cluster(CalData):
         if show_plt:
             plt.show()
         plt.close()
+
 
 # 以下是一些废弃的函数，请不要使用
 def cal_linear(X, y, use="sklearn", use_bias=True):
