@@ -18,13 +18,17 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC, SVR
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.metrics import roc_curve, auc, classification_report, matthews_corrcoef, hamming_loss, confusion_matrix, \
-    f1_score
+    f1_score, silhouette_score, adjusted_rand_score, normalized_mutual_info_score
 from sklearn import tree
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingClassifier, GradientBoostingRegressor
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.feature_selection import SelectKBest, chi2, f_classif, f_regression
-
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
 
 import torch
 from torch import nn
@@ -34,6 +38,7 @@ from torch.utils import data
 from easier_tools.Colorful_Console import ColoredText as CT
 from easier_tools.Colorful_Console import func_warning as fw
 from easier_tools.to_md import ToMd
+from easier_excel.draw_data import draw_scatter
 
 ToMd = ToMd()
 
@@ -751,7 +756,7 @@ class Tree(CalData):
         """
         X = self.df[X_name]
         y = self.df[y_name].values
-        self._cal_tree(X, y, draw_tree,pos_label, **kwargs)
+        self._cal_tree(X, y, draw_tree, pos_label, **kwargs)
 
     def cal_random_forest(self, X_name, y_name, pos_label=1, **kwargs):
         """
@@ -1053,6 +1058,420 @@ class KNN(CalData):
         self.knnR = KNeighborsRegressor(n_neighbors=k)
         self.knnR.fit(X, y)
 
+
+class NaiveBayes(CalData):
+    def __init__(self, df):
+        super().__init__(df)
+
+    def cal_naive_bayes(self, X_name, y_name, draw_nb=False, pos_label=1, **kwargs):
+        """
+        朴素贝叶斯，用于分类
+        原理是基于贝叶斯定理和特征条件独立假设，即每个特征在给定类别下是独立的。
+        公式：P(y|X) = P(y) * P(X|y) / P(X)
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param draw_nb: bool，是否绘制朴素贝叶斯的拟合曲线。
+        :param pos_label: int，正类别标签。
+        :param kwargs: 其他参数。包括：
+            priors: Any = None,                   # 先验概率
+            var_smoothing: Any = 1e-9             # 方差平滑
+        """
+        X = self.df[X_name]
+        y = self.df[y_name].values
+        self._cal_naive_bayes(X, y, draw_nb, pos_label, **kwargs)
+
+    def _cal_naive_bayes(self, X, y, draw_nb, pos_label, md_flag=False, **kwargs):
+        """
+        朴素贝叶斯
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param draw_nb: bool，是否绘制朴素贝叶斯的拟合曲线。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        neg_label = [i for i in set(y) if i != pos_label]
+        labels = [pos_label] + neg_label
+
+        self.nb = GaussianNB(**kwargs)
+        self.nb.fit(X, y)
+        print(CT("朴素贝叶斯:").blue())
+        self.ACC = self.nb.score(X, y)
+        print("准确率：", self.ACC)
+        self.y_pred = self.nb.predict(X)
+        self.F1_weight = f1_score(y, self.y_pred, average='weighted')
+        self.F1_unweighted = f1_score(y, self.y_pred, average="macro")
+
+        print("分类报告：")
+        classify_report = classification_report(y, self.y_pred)
+        print(classify_report)
+        print(f"混淆矩阵 -- labels = {labels}：")
+        conf_matrix = confusion_matrix(y, self.y_pred, labels=labels)
+        print(conf_matrix)
+
+        ToMd.text_to_md(f"GaussianNB 训练集准确率: {self.ACC}", md_flag, md_color='blue')
+        ToMd.df_to_md(pd.DataFrame(classification_report(y, self.y_pred, output_dict=True)).transpose(), md_flag, md_index=True)
+        ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
+
+
+class CrossValidation(CalData):
+    def __init__(self, df):
+        super().__init__(df)
+        self.cv = None
+        self.avg_score = None
+
+    def cal_cross_validation(self, model, X_name, y_name, cv=5, scoring="accuracy", **kwargs):
+        """
+        交叉验证
+        :param model: sklearn的模型。
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param cv: int，交叉验证的折数，默认是5。
+        :param scoring: str，评分标准，有{"accuracy", "precision", "recall", "f1", "roc_auc"}等。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+
+        X = self.df[X_name]
+        y = self.df[y_name].values
+        self._cal_cross_validation(model, X, y, cv, scoring, **kwargs)
+
+    def _cal_cross_validation(self, model, X, y, cv, scoring, **kwargs):
+        """
+        交叉验证
+        :param model: sklearn的模型。
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param cv: int，交叉验证的折数，默认是5。
+        :param scoring: str，评分标准，有{"accuracy", "precision", "recall", "f1", "roc_auc"}等。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        self.cv = cross_val_score(model, X, y, cv=cv, scoring=scoring, **kwargs)
+        print(CT("交叉验证:").blue())
+        print("交叉验证结果：", self.cv)
+        self.avg_score = np.mean(self.cv)
+        print(f"平均{scoring}：", self.avg_score)
+        print(f"{scoring}的标准差：", np.std(self.cv))
+
+
+# 降维
+class DimReduction(CalData):
+    def __init__(self, df):
+        super().__init__(df)
+        self.df_DR = None  # 降维后的数据
+        self.pca = None
+        self.lda = None
+        self.tsne = None
+
+    def cal_pca(self, X_name, y_name, n_components=2, draw_DR=False, ax=None, **kwargs):
+        """
+        主成分分析（PCA）
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param n_components: int，降维后的维度，默认是2。
+        :param draw_DR: bool，是否绘制降维后的散点图。
+        :param ax: plt.axis，绘制图的坐标轴。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        X = self.df[X_name]
+        y = self.df[y_name]
+        self._cal_pca(X, y, n_components, draw_DR, ax, **kwargs)
+
+    def cal_lda(self, X_name, y_name, n_components=2, draw_DR=False, ax=None, **kwargs):
+        """
+        线性判别分析（LDA）
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param n_components: int，降维后的维度，默认是2。
+        :param draw_DR: bool，是否绘制降维后的散点图。
+        :param ax: plt.axis，绘制图的坐标轴。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        X = self.df[X_name]
+        y = self.df[y_name]
+        self._cal_lda(X, y, n_components, draw_DR, ax, **kwargs)
+
+    def cal_tsne(self, X_name, y_name, n_components=2, draw_DR=False, ax=None, **kwargs):
+        """
+        t-SNE
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param n_components: int，降维后的维度，默认是2。
+        :param draw_DR: bool，是否绘制降维后的散点图。
+        :param ax: plt.axis，绘制图的坐标轴。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        X = self.df[X_name]
+        y = self.df[y_name]
+        self._cal_tsne(X, y, n_components, draw_DR, ax, **kwargs)
+
+    def _cal_pca(self, X, y, n_components, draw_DR, ax, **kwargs):
+        """
+        主成分分析（PCA）
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param n_components: int，降维后的维度，默认是2。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        show_plt = kwargs.pop("show_plt", True)
+        self.pca = PCA(n_components=n_components, **kwargs)
+        X_DR = self.pca.fit_transform(X)
+        self.df_DR = pd.concat([pd.DataFrame(X_DR), pd.Series(y, name=y.name)], axis=1)
+
+        if draw_DR:
+            draw_scatter(X_DR[:, 0], X_DR[:, 1], show_plt=show_plt, ax=ax,
+                         if_colorful=True, c=y, title="PCA", x_label="PC1", y_label="PC2", cmap="viridis")
+
+    def _cal_lda(self, X, y, n_components, draw_DR, ax, **kwargs):
+        """
+        线性判别分析（LDA）
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param n_components: int，降维后的维度，默认是2。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        show_plt = kwargs.pop("show_plt", True)
+        self.lda = LinearDiscriminantAnalysis(n_components=n_components, **kwargs)
+        X_DR = self.lda.fit_transform(X, y)
+        self.df_DR = pd.concat([pd.DataFrame(X_DR), pd.Series(y, name=y.name)], axis=1)
+
+        if draw_DR:
+            draw_scatter(X_DR[:, 0], X_DR[:, 1], show_plt=show_plt, ax=ax,
+                         if_colorful=True, c=y, title="LDA", x_label="LD1", y_label="LD2", cmap="viridis")
+
+    def _cal_tsne(self, X, y, n_components, draw_DR, ax, **kwargs):
+        """
+        t-SNE
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param n_components: int，降维后的维度，默认是2。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        show_plt = kwargs.pop("show_plt", True)
+        self.tsne = TSNE(n_components=n_components, **kwargs)
+        X_DR = self.tsne.fit_transform(X)
+        self.df_DR = pd.concat([pd.DataFrame(X_DR), pd.Series(y, name=y.name)], axis=1)
+
+        if draw_DR:
+            draw_scatter(X_DR[:, 0], X_DR[:, 1], show_plt=show_plt, ax=ax,
+                         if_colorful=True, c=y, title="t-SNE", x_label="t-SNE1", y_label="t-SNE2", cmap="viridis")
+
+
+# 聚类
+class Cluster(CalData):
+    def __init__(self, df):
+        super().__init__(df)
+        self.df_cluster = None
+
+        self.kmeans = None
+        self.agg = None
+        self.dbscan = None
+
+        self.silhouette_score = None
+        self.adjusted_rand_score = None
+        self.mutual_info_score = None
+
+    def cal_kmeans(self, X_name, y_name, n_clusters=2, draw_cluster=False, ax=None, **kwargs):
+        """
+        KMeans
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param n_clusters: int，簇的数量，默认是2。
+        :param draw_cluster: bool，是否绘制聚类后的散点图。
+        :param ax: plt.axis，绘制图的坐标轴。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        X = self.df[X_name]
+        y = self.df[y_name]
+        self._cal_kmeans(X, y, n_clusters, draw_cluster, ax, **kwargs)
+
+    def cal_agg(self, X_name, y_name, n_clusters=2, draw_cluster=False, ax=None, **kwargs):
+        """
+        层次聚类(Agglomerative Clustering)
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param n_clusters: int，簇的数量，默认是2。
+        :param draw_cluster: bool，是否绘制聚类后的散点图。
+        :param ax: plt.axis，绘制图的坐标轴。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        X = self.df[X_name]
+        y = self.df[y_name]
+        self._cal_agg(X, y, n_clusters, draw_cluster, ax, **kwargs)
+
+    def cal_dbscan(self, X_name, y_name, eps=0.5, min_samples=5, draw_cluster=False, ax=None, **kwargs):
+        """
+        DBSCAN
+        :param X_name: str或list，输入特征的列名。
+        :param y_name: str，输出标签的列名。
+        :param eps: float，两个样本被看作邻居节点的最大距离。
+        :param min_samples: int，核心点的最小样本数。
+        :param draw_cluster: bool，是否绘制聚类后的散点图。
+        :param ax: plt.axis，绘制图的坐标轴。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        X = self.df[X_name]
+        y = self.df[y_name]
+        self._cal_dbscan(X, y, eps, min_samples, draw_cluster, ax, **kwargs)
+
+    def _cal_kmeans(self, X, y, n_clusters, draw_cluster, ax, **kwargs):
+        """
+        KMeans
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param n_clusters: int，簇的数量，默认是2。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        show_plt = kwargs.pop("show_plt", True)
+        self.kmeans = KMeans(n_clusters=n_clusters, **kwargs)
+        y_pred = self.kmeans.fit_predict(X)
+        self.df_cluster = pd.concat([pd.DataFrame(X), pd.Series(y_pred, name="cluster")], axis=1)
+
+        self._calculate_metrics(X, y, y_pred)
+        if draw_cluster:
+            self._draw_cluster(X, y, y_pred, ax, "KMeans", show_plt=show_plt)
+
+    def _cal_agg(self, X, y, n_clusters, draw_cluster, ax, **kwargs):
+        """
+        层次聚类(Agglomerative Clustering)
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param n_clusters: int，簇的数量，默认是2。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        show_plt = kwargs.pop("show_plt", True)
+        self.agg = AgglomerativeClustering(n_clusters=n_clusters, **kwargs)
+        y_pred = self.agg.fit_predict(X)
+        self.df_cluster = pd.concat([pd.DataFrame(X), pd.Series(y_pred, name="cluster")], axis=1)
+
+        self._calculate_metrics(X, y, y_pred)
+        if draw_cluster:
+            self._draw_cluster(X, y, y_pred, ax, "Agglomerative Clustering", show_plt=show_plt)
+
+    def _cal_dbscan(self, X, y, eps, min_samples, draw_cluster, ax, **kwargs):
+        """
+        DBSCAN
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param eps: float，两个样本被看作邻居节点的最大距离。
+        :param min_samples: int，核心点的最小样本数。
+        :param kwargs: 其他参数。
+        :return: None
+        """
+        show_plt = kwargs.pop("show_plt", True)
+        self.dbscan = DBSCAN(eps=eps, min_samples=min_samples, **kwargs)
+        y_pred = self.dbscan.fit_predict(X)
+        self.df_cluster = pd.concat([pd.DataFrame(X), pd.Series(y_pred, name="cluster")], axis=1)
+
+        self._calculate_metrics(X, y, y_pred)
+        if draw_cluster:
+            self._draw_cluster(X, y, y_pred, ax, "DBSCAN", show_plt=show_plt)
+
+    def _calculate_metrics(self, X, y, y_pred):
+        """
+        计算评价指标
+        s(i)=\frac{b(i)-a(i)}{\max \{a(i), b(i)\}}
+        ARI = (RI - Expected_RI) / (max(RI) - Expected_RI)
+        I(U ; V)=\sum_{i=1}^{|U|} \sum_{j=1}^{|V|} p_{i j} \log \left(\frac{p_{i j}}{p_{i} p_{j}}\right)
+        :param X: np.ndarray，输入特征。
+        :param y: np.ndarray，输出标签。
+        :param y_pred: np.ndarray，聚类预测标签。
+        :return: None
+        """
+        if len(np.unique(y_pred)) > 1:
+            self.silhouette_score = silhouette_score(X, y_pred)
+        else:
+            self.silhouette_score = "Error"
+            print("聚类结果只有一个簇或所有点都被标记为噪声，无法计算 silhouette score")
+        self.adjusted_rand_score = adjusted_rand_score(y, y_pred)
+        self.mutual_info_score = normalized_mutual_info_score(y, y_pred)
+        print(f"Silhouette Score: {self.silhouette_score}")
+        print(f"Adjusted Rand Index: {self.adjusted_rand_score}")
+        print(f"Mutual Information Score: {self.mutual_info_score}")
+
+    def _draw_cluster(self, X, y, y_pred, ax, title, show_plt=True):
+        """
+        绘制聚类结果的等高线填充图
+        :param X: np.ndarray或者pd.dataframe，输入特征。
+        :param y: np.ndarray，实际的y
+        :param y_pred: np.ndarray，聚类预测标签。（事实上该参数并不需要，
+        :param ax: plt.axis，绘制图的坐标轴。
+        :param title: str，图的标题。
+        :return: None
+        """
+        # 检查输入特征的维度
+        if X.shape[1] > 2:
+            raise ValueError("输入特征的维度大于2，无法绘制聚类结果的等高线图。")
+
+        # 将X变为numpy.array
+        X = np.array(X)
+        # 检查ax
+        if ax is None:
+            ax = plt.gca()
+
+        # 设置边界范围的扩展比例
+        padding = 0.1
+        print("X.shape:", X.shape)
+        print("y_pred.shape:", y_pred.shape)
+        X0_min, X0_max = X[:, 0].min(), X[:, 0].max()
+        X1_min, X1_max = X[:, 1].min(), X[:, 1].max()
+        x_min, x_max = X0_min - padding * (X0_max - X0_min), X0_max + padding * (X0_max - X0_min)
+        y_min, y_max = X1_min - padding * (X1_max - X1_min), X1_max + padding * (X1_max - X1_min)
+
+        # 创建网格
+        xx, yy = np.meshgrid(np.linspace(x_min, x_max, 100), np.linspace(y_min, y_max, 100))
+
+        # 根据聚类方法预测网格点的聚类标签
+        if hasattr(self, 'kmeans') and self.kmeans is not None:
+            Z_contourf = self.kmeans.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+        elif hasattr(self, 'agg') and self.agg is not None:
+            Z_contourf = self.agg.fit_predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+        elif hasattr(self, 'dbscan') and self.dbscan is not None:
+            Z_contourf = self.dbscan.fit_predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
+        else:
+            raise ValueError("未找到有效的聚类方法。")
+
+        # 绘制等高线填充图
+        cmap_light = ListedColormap(['#FF1493', '#66ccff'])
+        ax.contourf(xx, yy, Z_contourf, cmap=cmap_light, alpha=0.5)
+
+        # 绘制决策边界
+        xy = np.vstack([xx.ravel(), yy.ravel()]).T
+        if hasattr(self, 'kmeans') and self.kmeans is not None:
+            Z_contour = self.kmeans.predict(xy).reshape(xx.shape)
+        elif hasattr(self, 'agg') and self.agg is not None:
+            Z_contour = self.agg.fit_predict(xy).reshape(xx.shape)
+        elif hasattr(self, 'dbscan') and self.dbscan is not None:
+            Z_contour = self.dbscan.fit_predict(xy).reshape(xx.shape)
+        else:
+            raise ValueError("未找到有效的聚类方法。")
+
+        ax.contour(xx, yy, Z_contour, colors='k', levels=np.unique(Z_contour), alpha=0.8, linestyles=['--', '-', '--'])
+
+        # 绘制散点图
+        scatter = ax.scatter(X[:, 0], X[:, 1], c=y, cmap=ListedColormap(['#FF0000', '#0000FF']), edgecolors='k')
+
+        # 添加图例
+        legend1 = ax.legend(*scatter.legend_elements(), title="Cluster")
+        ax.add_artist(legend1)
+
+        # 设置图的标题和网格线
+        ax.set_title(title)
+        ax.grid(True)
+        if show_plt:
+            plt.show()
+        plt.close()
 
 # 以下是一些废弃的函数，请不要使用
 def cal_linear(X, y, use="sklearn", use_bias=True):

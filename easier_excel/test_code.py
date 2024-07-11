@@ -186,54 +186,54 @@ from sklearn.preprocessing import PolynomialFeatures
 # print(poly.fit_transform(X).shape)
 # print(poly.get_feature_names_out())
 
-import pandas as pd
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from imblearn.over_sampling import SMOTE
-
-class DataPreprocessing:
-    def __init__(self, df_numeric):
-        self.df_numeric = df_numeric
-
-    def transform_df(self, minmax=(0, 1), smote_target=None):
-        self.demeaned_df = self.df_numeric - self.df_numeric.mean()
-
-        scaler = StandardScaler()
-        self.zscore_df = pd.DataFrame(scaler.fit_transform(self.df_numeric), columns=self.df_numeric.columns, index=self.df_numeric.index)
-
-        minmax_scaler = MinMaxScaler(feature_range=minmax)
-        self.minmax_df = pd.DataFrame(minmax_scaler.fit_transform(self.df_numeric), columns=self.df_numeric.columns, index=self.df_numeric.index)
-
-        if smote_target is not None:
-            smote = SMOTE(random_state=42)
-            X = self.df_numeric.drop([smote_target], axis=1)
-            y = self.df_numeric[smote_target]
-            X_smote, y_smote = smote.fit_resample(X, y)
-            self.smote_df = pd.concat([X_smote, y_smote], axis=1)
-            self.smote_df.index = range(len(self.smote_df))  # 重置索引
-
-# 示例使用
-df_numeric = pd.DataFrame({
-    'feature1': [1, 2, 3, 4, 5, 1000],
-    'feature2': [10, 20, 30, 40, 50, -1000],
-    'u_score': [0, 0, 1, 0, 1, 1]
-})
-
-preprocessor = DataPreprocessing(df_numeric)
-preprocessor.transform_df(smote_target='u_score')
-
-# 获取处理后的数据
-df_minmax = preprocessor.minmax_df
-
-df_zscore = preprocessor.zscore_df
-df_smote = preprocessor.smote_df
-
-# 确保 'u_score' 列正确赋值回去
-df_minmax['u_score'] = df_numeric['u_score'].values
-df_zscore['u_score'] = df_numeric['u_score'].values
-
-print("Min-Max Scaled DataFrame:")
-print(df_minmax)
-print("Z-score Standardized DataFrame:")
-print(df_zscore)
-print("SMOTE Resampled DataFrame:")
-print(df_smote)
+# import pandas as pd
+# from sklearn.preprocessing import StandardScaler, MinMaxScaler
+# from imblearn.over_sampling import SMOTE
+#
+# class DataPreprocessing:
+#     def __init__(self, df_numeric):
+#         self.df_numeric = df_numeric
+#
+#     def transform_df(self, minmax=(0, 1), target=None):
+#         self.demeaned_df = self.df_numeric - self.df_numeric.mean()
+#
+#         scaler = StandardScaler()
+#         self.zscore_df = pd.DataFrame(scaler.fit_transform(self.df_numeric), columns=self.df_numeric.columns, index=self.df_numeric.index)
+#
+#         minmax_scaler = MinMaxScaler(feature_range=minmax)
+#         self.minmax_df = pd.DataFrame(minmax_scaler.fit_transform(self.df_numeric), columns=self.df_numeric.columns, index=self.df_numeric.index)
+#
+#         if target is not None:
+#             smote = SMOTE(random_state=42)
+#             X = self.df_numeric.drop([target], axis=1)
+#             y = self.df_numeric[target]
+#             X_smote, y_smote = smote.fit_resample(X, y)
+#             self.smote_df = pd.concat([X_smote, y_smote], axis=1)
+#             self.smote_df.index = range(len(self.smote_df))  # 重置索引
+#
+# # 示例使用
+# df_numeric = pd.DataFrame({
+#     'feature1': [1, 2, 3, 4, 5, 1000],
+#     'feature2': [10, 20, 30, 40, 50, -1000],
+#     'u_score': [0, 0, 1, 0, 1, 1]
+# })
+#
+# preprocessor = DataPreprocessing(df_numeric)
+# preprocessor.transform_df(target='u_score')
+#
+# # 获取处理后的数据
+# df_minmax = preprocessor.minmax_df
+#
+# df_zscore = preprocessor.zscore_df
+# df_smote = preprocessor.smote_df
+#
+# # 确保 'u_score' 列正确赋值回去
+# df_minmax['u_score'] = df_numeric['u_score'].values
+# df_zscore['u_score'] = df_numeric['u_score'].values
+#
+# print("Min-Max Scaled DataFrame:")
+# print(df_minmax)
+# print("Z-score Standardized DataFrame:")
+# print(df_zscore)
+# print("SMOTE Resampled DataFrame:")
+# print(df_smote)

@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.polynomial.polynomial import Polynomial
 
-from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import SMOTE, ADASYN
+from imblearn.combine import SMOTEENN, SMOTETomek
 
 from scipy import stats
 from scipy.interpolate import interp1d, interp2d, lagrange, RectBivariateSpline, griddata, Rbf  # interp2d已被弃用
@@ -382,7 +383,7 @@ class desc_df(DFUtils):
         # 输出为md
         ToMd.df_to_md(self.outlier_info, md_flag, md_index=True)
 
-    def transform_df(self, minmax=(0, 1), smote_target=None):
+    def transform_df(self, minmax=(0, 1), target=None):
         """
         数据转换，包括中心化(去均值)，标准化(Z分数)，归一化(minmax)
         得到:
@@ -405,13 +406,29 @@ class desc_df(DFUtils):
         minmax_scaler = MinMaxScaler(feature_range=minmax)
         self.minmax_df = pd.DataFrame(minmax_scaler.fit_transform(self.df_numeric), columns=self.df_numeric.columns, index=self.df_numeric.index)
 
-        if smote_target is not None:
+        if target is not None:
+            X = self.df_numeric.drop([target], axis=1)
+            y = self.df_numeric[target]
+
             smote = SMOTE(random_state=42)
-            X = self.df_numeric.drop([smote_target], axis=1)
-            y = self.df_numeric[smote_target]
             X_smote, y_smote = smote.fit_resample(X, y)
             self.smote_df = pd.concat([X_smote, y_smote], axis=1)
             self.smote_df.index = range(len(self.smote_df))  # 重置索引
+
+            adasyn = ADASYN(random_state=42)
+            X_adasyn, y_adasyn = adasyn.fit_resample(X, y)
+            self.adasyn_df = pd.concat([X_adasyn, y_adasyn], axis=1)
+            self.adasyn_df.index = range(len(self.adasyn_df))  # 重置索引
+
+            smoteenn = SMOTEENN(random_state=42)
+            X_smoteenn, y_smoteenn = smoteenn.fit_resample(X, y)
+            self.smoteenn_df = pd.concat([X_smoteenn, y_smoteenn], axis=1)
+            self.smoteenn_df.index = range(len(self.smoteenn_df))  # 重置索引
+
+            smotetomek = SMOTETomek(random_state=42)
+            X_smotetomek, y_smotetomek = smotetomek.fit_resample(X, y)
+            self.smotetomek_df = pd.concat([X_smotetomek, y_smotetomek], axis=1)
+            self.smotetomek_df.index = range(len(self.smotetomek_df))  # 重置索引
 
         # 下面的用的不多，暂时注释掉。而且可能报错RuntimeWarning: overflow encountered in multiply x = um.multiply(x, x, out=x)
         # if (self.df_numeric < 0).any().any():

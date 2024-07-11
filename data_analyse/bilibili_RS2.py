@@ -3,12 +3,19 @@
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import VotingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
 from imblearn.over_sampling import SMOTE
 import pickle
-from sklearn.metrics import f1_score
+from sklearn.metrics import classification_report, confusion_matrix, f1_score
+import matplotlib.pyplot as plt
+
 from easier_excel import read_data, cal_data, draw_data
 from easier_tools.Colorful_Console import ColoredText as CT
 from easier_tools.to_md import ToMd
+
 ToMd.path = "output/bilibili_RS/Bili_RS_2.md"  # 更改输出路径
 ToMd = ToMd()
 ToMd.update_path()  # 这是更改path需要做的必要更新
@@ -46,7 +53,7 @@ desc_df_o = read_data.desc_df(df_origin.select_dtypes(include=['number']).copy()
 print(desc_df_o.shape)  # (1111, 25)
 print(df_origin['u_score'].value_counts())
 
-desc_df_o.transform_df(smote_target='u_score')
+desc_df_o.transform_df(target='u_score')
 df_origin_minmax = desc_df_o.minmax_df  # 归一化
 df_origin_minmax['u_score'] = df_origin['u_score']
 df_origin_zscore = desc_df_o.zscore_df  # 标准化
@@ -67,7 +74,7 @@ df_deleteoutlier = desc_df_o.df.copy()
 # print(temp.missing_info)
 print(df_deleteoutlier['u_score'].value_counts())  # 0: 895, 1: 89
 desc_df_d = read_data.desc_df(df_deleteoutlier)
-desc_df_d.transform_df(smote_target='u_score')
+desc_df_d.transform_df(target='u_score')
 df_deleteoutlier_minmax = desc_df_d.minmax_df  # 归一化
 df_deleteoutlier_minmax['u_score'] = df_deleteoutlier['u_score'].values
 df_deleteoutlier_zscore = desc_df_d.zscore_df  # 标准化
@@ -139,7 +146,7 @@ for j, feature in enumerate(features):
         df_acc.loc['gbdtC', df_acc.columns[i]] = cal_df.ACC
         df_f1_weight.loc['gbdtC', df_f1_weight.columns[i]] = cal_df.F1_weight
         df_f1_unweighted.loc['gbdtC', df_f1_weight.columns[i]] = cal_df.F1_unweighted
-    ToMd.text_to_md(f"特征集{j+1}：", md_flag=True, md_h=3)
+    ToMd.text_to_md(f"特征集{j+1}：", md_flag=True, md_h=4)
     ToMd.text_to_md(f"{feature}", md_flag=True)
     ToMd.text_to_md("准确率表", md_flag=True, md_bold=True)
     ToMd.df_to_md(df_acc, md_flag=True, md_index=True)
@@ -153,7 +160,7 @@ print(df_acc)  # 这是最后一次的，也就是feature_important
 # ToMd.df_to_md(df_acc, md_flag=True, md_index=True)
 
 print(CT("----------使用训练集和测试集----------").pink())
-ToMd.text_to_md("使用训练集和测试集", md_flag=True, md_h=3)
+ToMd.text_to_md("使用训练集和测试集", md_flag=True, md_h=4)
 ToMd.text_to_md("以下是测试集的输出信息", md_flag=True)
 for j, feature in enumerate(features):
     for i, df in enumerate(dfs):
@@ -202,7 +209,7 @@ for j, feature in enumerate(features):
         df_acc.loc['gbdtC', df_acc.columns[i]] = acc
         df_f1_weight.loc['gbdtC', df_f1_weight.columns[i]] = f1_weight
         df_f1_unweighted.loc['gbdtC', df_f1_weight.columns[i]] = f1_unweighted
-    ToMd.text_to_md(f"特征集{j+1}：", md_flag=True, md_h=3)
+    ToMd.text_to_md(f"特征集{j+1}：", md_flag=True, md_h=4)
     ToMd.text_to_md(f"{feature}", md_flag=True)
     ToMd.text_to_md("准确率表", md_flag=True, md_bold=True)
     ToMd.df_to_md(df_acc, md_flag=True, md_index=True)
@@ -212,7 +219,116 @@ for j, feature in enumerate(features):
     ToMd.df_to_md(df_f1_unweighted, md_flag=True, md_index=True)
 
 
+# 使用随机森林与feature_main，对df_origin，df_origin_zscore进行训练与交叉验证
+print(CT("----------使用随机森林与feature_main进行训练与交叉验证----------").pink())
 
+df_avg_score = pd.DataFrame(columns=['df_origin', 'df_origin_zscore', 'df_origin_smote'],
+                            index=['accuracy', 'precision', 'recall', 'f1', 'roc_auc'])
+
+for j, feature in enumerate(features):
+    ToMd.text_to_md(f"特征集{j+1}：", md_flag=True, md_h=4)
+    ToMd.text_to_md(f"{feature}", md_flag=True)
+    for i, df in enumerate([df_origin, df_origin_zscore, df_origin_smote]):
+        X_train, X_test, y_train, y_test = train_test_split(df[feature], df['u_score'], test_size=0.2, random_state=42)
+        train_dataset = X_train.copy()
+        train_dataset['u_score'] = y_train
+        test_dataset = X_test.copy()
+        test_dataset['u_score'] = y_test
+        cal_df = cal_data.Tree(train_dataset)
+        cal_df.cal_random_forest(feature, 'u_score')
+        f1_unweighted = f1_score(y_test, cal_df.tree.predict(X_test), average='macro')
+        print(f"df_origin: {f1_unweighted:.4f}")
+
+        cal_cv = cal_data.CrossValidation(train_dataset)
+        for score in ["accuracy", "precision", "recall", "f1", "roc_auc"]:
+            cal_cv.cal_cross_validation(cal_df.tree, feature, 'u_score', cv=5, scoring=score)
+            df_avg_score.loc[score, df_avg_score.columns[i]] = cal_cv.avg_score
+    ToMd.text_to_md("准确率表：", md_flag=True, md_bold=True)
+    ToMd.df_to_md(df_avg_score, md_flag=True, md_index=True)
+
+
+# 检验smote的效果
+# 将原始数据集划分为两部分，一部分用于训练，一部分用于测试。训练的数据进行smote，但是测试数据不进行smote
+print(CT("----------检验smote的效果----------").pink())
+# 这里为了简便，只使用feature_main，且只使用df_origin
+X_train, X_test, y_train, y_test = train_test_split(df_origin[feature_main], df_origin['u_score'],
+                                                    test_size=0.4, random_state=42)
+train_dataset = X_train.copy()
+train_dataset['u_score'] = y_train
+test_dataset = X_test.copy()
+test_dataset['u_score'] = y_test
+
+des_df = read_data.desc_df(train_dataset)
+des_df.transform_df(target='u_score')
+train_dataset_smote = des_df.smote_df
+train_dataset_adasyn = des_df.adasyn_df
+train_dataset_smoteenn = des_df.smoteenn_df
+train_dataset_smotetomek = des_df.smotetomek_df
+
+for i, train_dataset in enumerate([train_dataset_smote, train_dataset_adasyn,
+                                   train_dataset_smoteenn, train_dataset_smotetomek]):
+    print(CT(f"----------使用第{i+1}种处理类别不平衡问题的方法----------").pink())
+    cal_df = cal_data.Tree(train_dataset)
+    cal_df.cal_random_forest(feature_main, 'u_score')
+    acc = cal_df.tree.score(X_test, y_test)
+    f1_unweighted = f1_score(y_test, cal_df.tree.predict(X_test), average='macro')
+
+    print(f"accuracy: {acc:.4f}")
+    print(f"f1_unweighted: {f1_unweighted:.4f}")
+    print(classification_report(y_test, cal_df.tree.predict(X_test)))
+    print(confusion_matrix(y_test, cal_df.tree.predict(X_test)))
+
+
+print(CT("----------使用class_weight与VotingClassifier----------").pink())
+X_train, X_test, y_train, y_test = train_test_split(df_origin[feature_main], df_origin['u_score'],
+                                                    test_size=0.4, random_state=42)
+train_dataset = X_train.copy()
+train_dataset['u_score'] = y_train
+test_dataset = X_test.copy()
+test_dataset['u_score'] = y_test
+
+rf = RandomForestClassifier(class_weight={0: 1, 1: 100}, random_state=42)
+rf.fit(X_train, y_train)
+y_pred = rf.predict(X_test)
+print(classification_report(y_test, y_pred))
+
+
+log_reg = LogisticRegression(class_weight={0: 1, 1: 100}, random_state=42, max_iter=10000)
+rf = RandomForestClassifier(class_weight={0: 1, 1: 100}, random_state=42)
+svc = SVC(class_weight={0: 1, 1: 100}, probability=True, random_state=42, max_iter=10000)
+
+voting_clf = VotingClassifier(estimators=[
+    ('lr', log_reg),
+    ('rf', rf),
+    ('svc', svc)], voting='soft')
+voting_clf.fit(X_train, y_train)
+y_pred = voting_clf.predict(X_test)
+print(classification_report(y_test, y_pred))
+print(confusion_matrix(y_test, y_pred))
+
+
+# 检查数据的分布，使用t-SNE、PCA算法进行降维到二维，然后绘制散点图
+print(CT("----------检查数据的分布----------").pink())
+cal_DR = cal_data.DimReduction(df_origin)
+# 创建1行2列的图
+fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+cal_DR.cal_pca(feature_main, 'u_score', n_components=2, draw_DR=True, ax=axes[0], show_plt=False)
+cal_DR.cal_tsne(feature_main, 'u_score', n_components=2, draw_DR=True, ax=axes[1], show_plt=False)
+plt.show()
+plt.close()
+
+# 聚类
+print(CT("----------聚类----------").pink())
+print(CT("----------feature_main----------").pink())
+cal_cluster = cal_data.Cluster(df_origin)
+cal_cluster.cal_kmeans(feature_main, 'u_score', n_clusters=2, draw_cluster=False)
+cal_cluster.cal_agg(feature_main, 'u_score', n_clusters=2, draw_cluster=False)
+cal_cluster.cal_dbscan(feature_main, 'u_score', eps=0.5, min_samples=5, draw_cluster=False)
+print(CT("----------二维(绘图)----------").pink())
+cal_cluster = cal_data.Cluster(df_origin[["coin_rate", "fav_rate", "u_score"]])
+cal_cluster.cal_kmeans(["coin_rate", "fav_rate"], 'u_score', n_clusters=2, draw_cluster=True)
+cal_cluster.cal_agg(["coin_rate", "fav_rate"], 'u_score', n_clusters=2, draw_cluster=True)
+cal_cluster.cal_dbscan(["coin_rate", "fav_rate"], 'u_score', eps=0.5, min_samples=5, draw_cluster=True)
 
 
 
