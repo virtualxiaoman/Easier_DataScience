@@ -36,37 +36,52 @@ print(desc_df.missing_info)
 desc_df.process_outlier(method='IQR', show_info=True, process_type='ignore')
 print("异常值：", end='')
 print(desc_df.df.iloc[48:49])  # (第48行)荒泷一斗的防御力为异常值
+print(desc_df.columns)
+# desc_df.draw_hist()  # 绘制直方图
 
 
-print("----------数据处理(回归)----------")
-cal_df = cd.Linear(df)
-cal_df.cal_linear(["星级", "生命值", "攻击力", "防御力"], '模')
-print(cal_df.weight)
-print(cal_df.MSE)  # 还可以去查看其他的属性值，这里不做展示了
-# dd.draw_density(cal_df.residuals)  # 残差密度图
-# 在逻辑回归的ROC曲线里，(1, 1)处的值在y=x之下，可能是因为荧虽然被定为Positive（五星），但是基础数据太低了，所以模型给预测成Negative了
-cal_df.cal_logistic(["生命值", "攻击力", "防御力"], '星级', pos_label=5)  # pos_label=5表示星级为5的为正类别
-cal_df.cal_poly(["星级", "生命值", "攻击力", "防御力"], '模', degree=2, include_linear_bias=True, include_poly_bias=True)  # 二次多项式回归
-print(cal_df.weight)
+print("----------特征工程----------")
+methods = ["var", "k", "rfe", "rf", "pca", "lda"]
+FT = cd.FeatureTransform(df)
+for method in methods:
+    FT.select(target_name='星级', method=method, feature_name=['生命值', '攻击力', '防御力'],
+              threshold=5000, k=1)  # 这里不演示其返回值
+methods = ["poly"]
+for method in methods:
+    FT.generate(target_name='星级', method=method, feature_name=['生命值', '攻击力', '防御力'],
+                degree=2, include_bias=True, interaction_only=False)
 
-print("----------数据处理(SVM)----------")
-cal_df = cd.SVM(df)
-# 下面两个的属性都不符合绘图的要求，所以不绘图，因此不要设置draw_svr=True
-cal_df.cal_svr(["星级", "生命值", "攻击力", "防御力"], '模', draw_svr=False, kernel='linear')
-cal_df.cal_svc(["生命值", "攻击力", "防御力"], '星级', draw_svc=False, kernel='linear')
-# # 下面是为了演示绘图的，效果并不好
-# cal_df.cal_svr(["生命值"], '模', draw_svr=True, kernel='linear')
-# cal_df.cal_svc(["生命值", "攻击力"], '星级', draw_svc=True, kernel='poly')
+# print("----------数据处理(回归)----------")
+# cal_df = cd.Linear(df)
+# cal_df.cal_linear(["星级", "生命值", "攻击力", "防御力"], '模')
+# print(cal_df.weight)
+# print(cal_df.MSE)  # 还可以去查看其他的属性值，这里不做展示了
+# # dd.draw_density(cal_df.residuals)  # 残差密度图
+# # 在逻辑回归的ROC曲线里，(1, 1)处的值在y=x之下，可能是因为荧虽然被定为Positive（五星），但是基础数据太低了，所以模型给预测成Negative了
+# cal_df.cal_logistic(["生命值", "攻击力", "防御力"], '星级', pos_label=5)  # pos_label=5表示星级为5的为正类别
+# cal_df.cal_poly(["星级", "生命值", "攻击力", "防御力"], '模', degree=2, include_linear_bias=True, include_poly_bias=True)  # 二次多项式回归
+# print(cal_df.weight)
+#
+# print("----------数据处理(SVM)----------")
+# cal_df = cd.SVM(df)
+# # 下面两个的属性都不符合绘图的要求，所以不绘图，因此不要设置draw_svr=True
+# cal_df.cal_svr(["星级", "生命值", "攻击力", "防御力"], '模', draw_svr=False, kernel='linear')
+# cal_df.cal_svc(["生命值", "攻击力", "防御力"], '星级', draw_svc=False, kernel='linear')
+# # # 下面是为了演示绘图的，效果并不好
+# # cal_df.cal_svr(["生命值"], '模', draw_svr=True, kernel='linear')
+# # cal_df.cal_svc(["生命值", "攻击力"], '星级', draw_svc=True, kernel='poly')
+#
+# print("----------数据处理(决策树)----------")
+# cal_df = cd.Tree(df)
+# cal_df.cal_tree(["生命值", "攻击力", "防御力"], '星级', criterion='entropy', draw_tree=True, pos_label=5)
+# cal_df.cal_tree(["生命值", "攻击力", "防御力"], '星级', criterion='gini', draw_tree=True, pos_label=5)
+#
+# print("----------数据处理(KNN)----------")
+# cal_df = cd.KNN(df)
+# cal_df.cal_knnC(["生命值", "攻击力", "防御力"], '星级', k=3)
+# print(cal_df.knnC.predict(df[["生命值", "攻击力", "防御力"]]))  # 因为没有给验证集，所以这里以训练集来预测，只是为了展示效果
 
-print("----------数据处理(决策树)----------")
-cal_df = cd.Tree(df)
-cal_df.cal_tree(["生命值", "攻击力", "防御力"], '星级', criterion='entropy', draw_tree=True, pos_label=5)
-cal_df.cal_tree(["生命值", "攻击力", "防御力"], '星级', criterion='gini', draw_tree=True, pos_label=5)
 
-print("----------数据处理(KNN)----------")
-cal_df = cd.KNN(df)
-cal_df.cal_knnC(["生命值", "攻击力", "防御力"], '星级', k=3)
-print(cal_df.knnC.predict(df[["生命值", "攻击力", "防御力"]]))  # 因为没有给验证集，所以这里以训练集来预测，只是为了展示效果
 
 exit(111)
 print("----------数据分析(绘图)----------")  # 绘图部分代码正在重构中

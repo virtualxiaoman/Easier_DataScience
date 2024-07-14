@@ -237,3 +237,41 @@ from sklearn.preprocessing import PolynomialFeatures
 # print(df_zscore)
 # print("SMOTE Resampled DataFrame:")
 # print(df_smote)
+
+# import pandas as pd
+# from sklearn.feature_selection import VarianceThreshold
+#
+# # 示例数据
+# data = {
+#     'feature1': [1, 2, 3, 4, 5],
+#     'feature2': [2.1, 3.4, 1.2, 4.3, 5.1],
+#     'feature3': [0, 0, 0, 0, 0],  # 常数特征
+#     'feature4': [1, 1, 1, 0, 0],  # 低方差特征
+#     'target': [0, 1, 0, 1, 0]
+# }
+# df = pd.DataFrame(data)
+# X = df.drop(columns=['target'])
+#
+# # 计算每个特征的方差
+# variances = X.var()
+# print("每个特征的方差：")
+# print(variances)
+#
+# # 设置合理的阈值
+# threshold = 0.1
+#
+# # 使用VarianceThreshold进行特征选择
+# selector = VarianceThreshold(threshold=threshold)
+# X_new = selector.fit_transform(X)
+#
+# selected_features = X.columns[selector.get_support()]
+# print("选择的特征是：")
+# print(selected_features)
+#
+# # 输出选择后的DataFrame
+# df_new = pd.DataFrame(X_new, columns=selected_features)
+# print(df_new)
+
+import cProfile
+
+cProfile.run('np.std(np.random.rand(100000000))')

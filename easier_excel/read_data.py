@@ -14,8 +14,9 @@ from scipy.interpolate import interp1d, interp2d, lagrange, RectBivariateSpline,
 
 from sklearn.experimental import enable_iterative_imputer  # 为了使用IterativeImputer，需要导入这个
 from sklearn.impute import SimpleImputer, KNNImputer, IterativeImputer
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, IsolationForest
 from sklearn.preprocessing import PowerTransformer, StandardScaler, MinMaxScaler
+
 from easier_excel.utils import DFUtils
 from easier_tools.Colorful_Console import func_warning as func_w
 from easier_tools.Colorful_Console import func_error as func_e
@@ -77,6 +78,7 @@ def read_df(path):
     return df
 
 
+# 数据描述与预处理
 class desc_df(DFUtils):
     def __init__(self, df):
         """
@@ -97,7 +99,8 @@ class desc_df(DFUtils):
         self.smote_df = None  # SMOTE处理后的数据
 
     # 展示数据
-    def show_df(self, head_n=0, tail_n=0, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False, md_flag=False):
+    def show_df(self, head_n=0, tail_n=0, show_shape=True, show_columns=True, show_dtypes=True, dtypes_T=False,
+                md_flag=False):
         """
         查看数据，请传入DataFrame数据类型的数据。
         一些可能用到的，用于查阅：
@@ -194,15 +197,16 @@ class desc_df(DFUtils):
             # 还可以使用import missingno
             # missingno.matrix(self.df)
 
-        # 输出到md
-        ToMd.text_to_md("1.4 描述性统计信息:", md_flag, md_bold=True, md_color='blue', md_h=2)
-        ToMd.df_to_md(self.numeric_stats, md_flag, md_index=True)
-        ToMd.text_to_md("1.5 缺失值检测:", md_flag, md_bold=True, md_color='blue', md_h=2)
-        ToMd.df_to_md(self.missing_info, md_flag, md_index=True)
-        plt.figure()
-        sns.heatmap(self.df.isna(), cmap='gray_r', cbar_kws={"orientation": "vertical"}, vmin=0, vmax=1)
-        ToMd.pic_to_md(plt, md_flag, md_title="heatmap")
-        plt.close()
+        # 输出到md(md_flag的逻辑还是有点混乱....)
+        if md_flag:
+            ToMd.text_to_md("1.4 描述性统计信息:", md_flag, md_bold=True, md_color='blue', md_h=2)
+            ToMd.df_to_md(self.numeric_stats, md_flag, md_index=True)
+            ToMd.text_to_md("1.5 缺失值检测:", md_flag, md_bold=True, md_color='blue', md_h=2)
+            ToMd.df_to_md(self.missing_info, md_flag, md_index=True)
+            plt.figure()
+            sns.heatmap(self.df.isna(), cmap='gray_r', cbar_kws={"orientation": "vertical"}, vmin=0, vmax=1)
+            ToMd.pic_to_md(plt, md_flag, md_title="heatmap")
+            plt.close()
 
     # 画热力图
     def draw_heatmap(self, scale=False, v_minmax=None, xticklabels=None):
@@ -223,6 +227,21 @@ class desc_df(DFUtils):
             sns.heatmap(df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
         else:
             sns.heatmap(self.df, cmap='RdYlBu_r', xticklabels=xticklabels, cbar_kws={"orientation": "vertical"})
+        plt.show()
+        plt.close()
+
+    # 画直方图
+    def draw_hist(self, bins=10):
+        """
+        画直方图
+        :param bins: 柱子的数量
+        """
+        # 如果列名含有中文，需要设置字体
+        if any(self.has_chinese(col) for col in self.df.columns):
+            plt.rcParams['font.sans-serif'] = ["SimSun"]
+        else:
+            plt.rcParams['font.sans-serif'] = ["Times New Roman"]
+        self.df.hist(bins=bins)
         plt.show()
         plt.close()
 
@@ -258,6 +277,7 @@ class desc_df(DFUtils):
               请注意这个不适合于时间序列的数据，时间序列的请使用插值法，比如本文件中的interpolate_data类。
             2.对于其他类型的数据，目前只支持的填充类型有：
                 填充 'nan'，也就是输出时显示NaN（其实还是缺失值~~）
+                还可以使用众数填充，或者调用fancyimpute库的KNN等方法。
             3.如需删除缺失值请使用：delete_missing_values。
             4.文档：https://scikit-learn.org/stable/modules/impute.html
         :param fill_type: 填补类型，支持 'mean', 'median', 'most_frequent', 'constant(直接填入具体数值)', 'knn', 'rf'
@@ -306,7 +326,9 @@ class desc_df(DFUtils):
 
     # 处理异常值
     def process_outlier(self, method='IQR', process_type='delete', show_info=False,
-                        IQR_Q1=0.25, IQR_Q3=0.75, IQR_k=1.5, Zscore_threshold=3, md_flag=False):
+                        IQR_Q1=0.25, IQR_Q3=0.75, IQR_k=1.5, Zscore_threshold=3,
+                        IF_contamination=0.1, IF_n_estimators=100,
+                        md_flag=False):
         """
         处理异常值
         [Warning]:
@@ -317,16 +339,28 @@ class desc_df(DFUtils):
                 不过在Sklearn绘制箱型图的时候，左右边界是[Q1-1.5*IQR, Q3+1.5*IQR]里的最远的实际的数据点，而不一定是计算得到的值。
             2.Z-score:
                 |X-mu|/sigma > 3 的数据被认为是异常值。
-            3.文档：
+            3.IsolationForest:
+                一种基于树的异常检测方法，通过随机森林的方法来检测异常值。
+                适用于多维数据。
+            4.文档：
                 Visualize-ML/Book6_Ch03的ipynb
                 https://scikit-learn.org/stable/modules/outlier_detection.html
         :param method: 处理异常值的方法，支持 'IQR', 'Z-score'
         :param process_type: 处理异常值的类型，支持 'delete', 'fill', 'ignore'
         :param show_info: 是否输出异常值的一些信息
+        :param IQR_Q1: IQR的Q1
+        :param IQR_Q3: IQR的Q3
+        :param IQR_k: IQR的k，默认值代表约有1%的异常值。k取1时，类似于scipy.stats.trimboth。
+        :param Zscore_threshold: Z-score的阈值
+        :param IF_contamination: IsolationForest的异常值比例
+        :param IF_n_estimators: IsolationForest的树的数量
+        :param md_flag: 是否输出md
         """
         # 处理数值型数据
-        lower_bound, upper_bound = None, None
-        if method not in ['IQR', 'Z-score']:
+        lower_bound = self.df_numeric.min()
+        upper_bound = self.df_numeric.max()
+        outlier_index = None
+        if method not in ['IQR', 'Z-score', 'IsolationForest']:
             func_w(self.process_outlier,
                    warning_text=f"不支持的method格式'{method}'，这里默认选择IQR",
                    modify_tip="请检查method是否正确")
@@ -345,11 +379,18 @@ class desc_df(DFUtils):
             # 返回的是一个Series，~是取反，mask是将不满足条件的值替换为NaN，然后取最小值，即最小的正常值
             lower_bound = self.df_numeric.mask(~outliers).min()
             upper_bound = self.df_numeric.mask(~outliers).max()  # 返回的是一个Series，即最大的正常值
+        elif method == 'IsolationForest':
+            clf = IsolationForest(contamination=IF_contamination, n_estimators=IF_n_estimators, random_state=42)
+            clf.fit(self.df_numeric)
+            outlier_index = clf.predict(self.df_numeric) == -1
+            lower_bound = self.df_numeric[~outlier_index].min()
+            upper_bound = self.df_numeric[~outlier_index].max()
         else:
             pass
 
-        # 异常值的条件是小于下界或者大于上界。outlier_index是一个DataFrame，True表示异常值
-        outlier_index = (self.df_numeric < lower_bound) | (self.df_numeric > upper_bound)
+        # 其他情况下异常值的条件是：小于下界或者大于上界。outlier_index是一个DataFrame，True表示异常值
+        if method != 'IsolationForest':
+            outlier_index = (self.df_numeric < lower_bound) | (self.df_numeric > upper_bound)
 
         self.outlier_info = pd.DataFrame({
             'count': self.df_numeric[outlier_index].count(),
@@ -390,11 +431,19 @@ class desc_df(DFUtils):
             self.demeaned_df: 去均值
             self.zscore_df: Z-score标准化
             self.minmax_df: 映射到[minmax[0], minmax[1]]的区间上
+            self.smote_df: SMOTE处理后的数据，同样还有adasyn_df, smoteenn_df, smotetomek_df
+        [公式]:
+            1. 去均值: X' = X - X.mean()
+            2. Z-score标准化: X' = (X - X.mean()) / X.std()
+            3. minmax: X' = (max-min) * [(X - X.min()) / (X.max() - X.min())] + min
         [Tips]:
             1.标准化standardization: 使得处理后的数据具有固定均值0和标准差1，可以使得不同特征之间的数值尺度相同，
             避免某些特征对模型的影响过大，从而提高模型的鲁棒性和稳定性。标准化不会限制数据的范围。
             2.归一化normalization: 将数据缩放到[0,1]或[-1,1]的区间上。，可以使得不同特征的权重相同，
             避免某些特征对模型的影响过大，从而提高模型的准确性和泛化能力。归一化可使所有特征具有相似的尺度。
+            3.采样sampling：二分类中一般9:1表示数据失衡。
+            SMOTE是一种过采样方法，ADASYN是一种自适应过采样方法，
+            SMOTEENN是SMOTE和ENN(编辑最近邻)的组合，SMOTETomek是SMOTE和Tomek(去噪)的组合。
         """
         self.demeaned_df = self.df_numeric - self.df_numeric.mean()
         # self.zscore_df = (self.df_numeric - self.df_numeric.mean()) / self.df_numeric.std()
@@ -442,6 +491,7 @@ class desc_df(DFUtils):
         # pt = PowerTransformer(method='yeo-johnson')
         # self.yeojohnson_df = pt.fit_transform(self.df_numeric)
 
+    # 用于更新df的相关数据
     def update_desc_df(self):
         """
         更新df的相关数据
@@ -455,7 +505,7 @@ class desc_df(DFUtils):
 # df_main.insert(0, 'index', range(1, df_main.shape[0] + 1))
 # print(df_main.iloc[5])  # 获取第6行
 
-
+# 插值
 class interpolate_data:
     def __init__(self, x, y, z=None):
         """

@@ -24,15 +24,15 @@ from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, GradientBoostingClassifier, GradientBoostingRegressor
 from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.feature_selection import SelectKBest, chi2, f_classif, f_regression
+from sklearn.feature_selection import VarianceThreshold, SelectKBest, chi2, f_classif, f_regression, RFE
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
 
-import torch
-from torch import nn
-from torch.utils import data
+# import torch
+# from torch import nn
+# from torch.utils import data
 
 
 from easier_tools.Colorful_Console import ColoredText as CT
@@ -43,15 +43,16 @@ from easier_excel.draw_data import draw_scatter
 ToMd = ToMd()
 
 
-def load_array(data_arrays, batch_size, is_train=True):
-    """
-    构造一个PyTorch数据迭代器
-    :param data_arrays: 一个包含数据数组的元组或列表。通常包括输入特征和对应的标签(features, labels)。
-    :param batch_size: 每个小批量样本的数量。
-    :param is_train: True数据将被随机洗牌(用于训练);False数据将按顺序提供(用于模型的评估或测试)。
-    """
-    dataset = data.TensorDataset(*data_arrays)  # 将数据数组转换为TensorDataset对象(将数据存储为Tensor对象，并允许按索引访问)
-    return data.DataLoader(dataset, batch_size, shuffle=is_train)
+# 下面这个函数已经移至easier_nn/load_data.py。
+# def load_array(data_arrays, batch_size, is_train=True):
+#     """
+#     构造一个PyTorch数据迭代器
+#     :param data_arrays: 一个包含数据数组的元组或列表。通常包括输入特征和对应的标签(features, labels)。
+#     :param batch_size: 每个小批量样本的数量。
+#     :param is_train: True数据将被随机洗牌(用于训练);False数据将按顺序提供(用于模型的评估或测试)。
+#     """
+#     dataset = data.TensorDataset(*data_arrays)  # 将数据数组转换为TensorDataset对象(将数据存储为Tensor对象，并允许按索引访问)
+#     return data.DataLoader(dataset, batch_size, shuffle=is_train)
 
 
 class CalData:
@@ -76,6 +77,159 @@ class CalData:
         """
         pattern = re.compile(r'[\u4e00-\u9fa5]')  # 匹配中文字符的正则表达式
         return bool(pattern.search(text))
+
+
+# 特征工程
+class FeatureTransform(CalData):
+    def __init__(self, df):
+        super().__init__(df)
+        self.new_features = None  # 新特征
+
+    # 特征选择
+    def select(self, target_name=None, feature_name=None, method="variance", **kwargs):
+        """
+        [Tips]:
+            1.方法依次为：低方差特征排除、单变量特征选择、递归特征消除、随机森林、主成分分析、线性判别分析。
+                         VarianceThreshold, SelectKBest ,RFE, RandomForestClassifier ,PCA ,LDA
+            2.具体而言：
+                低方差特征排除VarianceThreshold：删除方差低于阈值threshold的特征。
+                单变量特征选择SelectKBest：选择K个最佳特征。方法有chi2、f_classif、f_regression。
+                递归特征消除RFE：递归地训练模型，每次删除最不重要的特征。
+                随机森林RandomForest：使用随机森林模型进行特征选择。
+                主成分分析PCA：使用PCA进行特征降维。
+                线性判别分析LDA：使用LDA进行特征降维。
+            3.暂时不支持非数值型特征。可以尝试以下代码：
+                from sklearn.pipeline import Pipeline
+                from sklearn.compose import ColumnTransformer
+                from sklearn.preprocessing import OneHotEncoder, StandardScaler
+                # 预处理
+                preprocessor = ColumnTransformer(
+                    transformers=[
+                        ('num', StandardScaler(), numerical_features),
+                        ('cat', OneHotEncoder(), categorical_features)
+                    ])
+                pipeline = Pipeline(steps=[
+                    ('preprocessor', preprocessor),
+                    ('selector', SelectKBest(score_func=chi2, k=3))
+                ])
+                pipeline.fit(X, y)
+                X_selected = pipeline.transform(X)
+        :param target_name: str，目标特征的列名。
+        :param feature_name: list，[可选]特征的列名，不指定时默认为所有特征(不包括target)。
+        :param method: str，特征选择的方法。有{"var", "k", "rfe", "rf", "pca", "lda"}。
+        :param kwargs: dict，其他参数。一般只需传入var方法的threshold或者其他方法的k。具体包括：
+          method="var"时，kwargs包括：threshold=0.0
+          method="k"时，kwargs包括：score_func=f_classif, k=10
+          method="rfe"时，kwargs包括：estimator=LogisticRegression(), k=None(默认为特征数的一半)
+          method="rf"时，kwargs包括：estimator=RandomForestClassifier(), k=10
+          method="pca"时，kwargs包括：k=2
+          method="lda"时，kwargs包括：k=1
+        :return: pd.DataFrame，选择后的特征。
+        """
+        if target_name is None:
+            raise ValueError("目标特征的列名不能为空。")
+        X = self.df.drop(columns=[target_name]) if feature_name is None else self.df[feature_name]
+        y = self.df[target_name]
+
+        print(CT(f"[FeatureSelection] method='{method}' 特征选择的结果是: ").blue())
+        if method == "var":
+            # print(X.var())
+            threshold = kwargs.get('threshold', 0.0)
+            selector = VarianceThreshold(threshold=threshold)
+            X_new = selector.fit_transform(X)
+            selected_features = X.columns[selector.get_support()]
+
+        elif method == "k":
+            score_func = kwargs.get('score_func', f_classif)
+            k = kwargs.get('k', 10)
+            selector = SelectKBest(score_func=score_func, k=k)
+            X_new = selector.fit_transform(X, y)
+            selected_features = X.columns[selector.get_support()]
+            print(f"score: {selector.scores_}, p-value: {selector.pvalues_}")  # score越大，p-value越小，越有可能是重要特征
+
+        elif method == "rfe":
+            estimator = kwargs.get('estimator', LogisticRegression())
+            k = kwargs.get('k', None)
+            selector = RFE(estimator=estimator, n_features_to_select=k)
+            X_new = selector.fit_transform(X, y)
+            selected_features = X.columns[selector.get_support()]
+
+        elif method == "rf":
+            estimator = kwargs.get('estimator', RandomForestClassifier())
+            k = kwargs.get('k', 10)
+            estimator.fit(X, y)
+            importances = estimator.feature_importances_
+            indices = importances.argsort()[::-1]
+            selected_features = X.columns[indices[:k]]
+            X_new = X[selected_features]
+            print(f"特征重要性: {importances}")
+
+        elif method == "pca":
+            k = kwargs.get('k', 2)
+            pca = PCA(n_components=k)
+            X_new = pca.fit_transform(X)
+            selected_features = [f'PCA{i + 1}' for i in range(k)]
+            print(f"explained_variance_ratio: {pca.explained_variance_ratio_}")  # 这个值越大，说明这个主成分越重要
+
+        elif method == "lda":
+            k = kwargs.get('k', 1)
+            lda = LDA(n_components=k)
+            X_new = lda.fit_transform(X, y)
+            selected_features = [f'LDA{i + 1}' for i in range(k)]
+            print(f"explained_variance_ratio: {lda.explained_variance_ratio_}")
+
+        else:
+            raise ValueError(f"不支持的方法{method}")
+
+        self.new_features = selected_features
+        print(f"选择了{len(self.new_features)}/{len(X.columns)}个特征。")
+        print("选择的特征是：", end='')
+        print(list(self.new_features))
+
+        df = pd.DataFrame(X_new, columns=self.new_features)
+        df[target_name] = y
+        return df
+
+    # 特征生成
+    def generate(self, target_name=None, feature_name=None, method="variance", **kwargs):
+        """
+        [Tips]:
+            1.方法依次为：多项式特征转换
+                         PolynomialFeatures
+            2.具体而言：
+                多项式特征转换PolynomialFeatures：将特征转换为多项式特征。
+        :param target_name: str，目标特征的列名。
+        :param feature_name: list，[可选]特征的列名，不指定时默认为所有特征(不包括target)。
+        :param method: str，特征生成的方法。有{"poly"}。
+        :param kwargs: dict，其他参数。一般只需传入degree或者其他参数。具体包括：
+          method="poly"时，kwargs包括：degree=2, include_bias=True, interaction_only=False
+        :return: pd.DataFrame，生成后的特征。
+        """
+        if target_name is None:
+            raise ValueError("目标特征的列名不能为空。")
+        X = self.df.drop(columns=[target_name]) if feature_name is None else self.df[feature_name]
+        y = self.df[target_name]
+
+        print(CT(f"[FeatureGeneration] method='{method}' 特征生成的结果是: ").blue())
+        if method == "poly":
+            degree = kwargs.get('degree', 2)
+            include_bias = kwargs.get('include_bias', True)
+            interaction_only = kwargs.get('interaction_only', False)
+            poly = PolynomialFeatures(degree=degree, include_bias=include_bias, interaction_only=interaction_only)
+            X_new = poly.fit_transform(X)
+            selected_features = poly.get_feature_names_out()
+
+        else:
+            raise ValueError(f"不支持的方法{method}")
+
+        self.new_features = selected_features
+        print(f"生成了{len(self.new_features)}/{len(X.columns)}个特征。")
+        print("生成的特征是：", end='')
+        print(list(self.new_features))
+
+        df = pd.DataFrame(X_new, columns=self.new_features)
+        df[target_name] = y
+        return df
 
 
 class Linear(CalData):
@@ -110,7 +264,7 @@ class Linear(CalData):
         self.dagostino_pvalue = None  # D'Agostino's K² P值，float类型
         self.durbin_watson_statistic = None  # Durbin-Watson统计量，float类型
 
-    def cal_linear(self, X_name, y_name, use_bias=True, detailed=True, **kwargs):
+    def cal_linear(self, X_name, y_name, use_bias=True, detailed=True, md_flag=False, **kwargs):
         """
         线性回归。
         公式：y = X @ w + b
@@ -124,12 +278,15 @@ class Linear(CalData):
         :param X_name: str或list，输入特征的列名。
         :param y_name: str，输出标签的列名。
         :param use_bias: bool，是否使用偏置参数b。
+        :param detailed: bool，是否计算详细的统计量。
+        :param md_flag: bool，是否将结果保存为Markdown格式。
         """
         X = self.df[X_name]
         y = self.df[y_name].values.reshape(-1, 1)
-        self._cal_linear(X, y, use_bias, **kwargs)
+        self._cal_linear(X, y, use_bias, detailed, md_flag, **kwargs)
 
-    def cal_logistic(self, X_name, y_name, use_bias=True, pos_label=1, detailed=True, **kwargs):
+    def cal_logistic(self, X_name, y_name, use_bias=True, pos_label=1, draw_roc=False,
+                     detailed=True, md_flag=False, **kwargs):
         """
         逻辑回归。
         公式：y = 1 / (1 + exp(-X @ w + b))
@@ -141,13 +298,15 @@ class Linear(CalData):
         :param y_name: str，输出标签的列名。
         :param use_bias: bool，是否使用偏置参数b。
         :param pos_label: int，正类别标签。
+        :param detailed: bool，是否计算详细的统计量。
+        :param md_flag: bool，是否将结果保存为Markdown格式。
         """
         X = self.df[X_name]
         y = self.df[y_name].values.reshape(-1, )
-        self._cal_logistic(X, y, use_bias, pos_label, **kwargs)
+        self._cal_logistic(X, y, use_bias, pos_label, draw_roc, detailed, md_flag, **kwargs)
 
-    def cal_poly(self, X_name, y_name, degree=2, include_linear_bias=False, include_poly_bias=False, detailed=True,
-                 **kwargs):
+    def cal_poly(self, X_name, y_name, degree=2, include_linear_bias=False, include_poly_bias=False,
+                 detailed=True, md_flag=False, **kwargs):
         """
         多项式回归。因为使用的不多，这里不进行统计量的计算与检验，仅给出模型的拟合。
         [Tips]:
@@ -167,10 +326,12 @@ class Linear(CalData):
         :param degree: int，多项式的次数。
         :param include_linear_bias: bool，是否包含线性偏置参数。
         :param include_poly_bias: bool，是否包含多项式偏置参数。
+        :param detailed: bool，是否计算详细的统计量。
+        :param md_flag: bool，是否将结果保存为Markdown格式。
         """
         X = self.df[X_name]
         y = self.df[y_name].values.reshape(-1, 1)
-        self._cal_poly(X, y, degree, include_linear_bias, include_poly_bias,  **kwargs)
+        self._cal_poly(X, y, degree, include_linear_bias, include_poly_bias, detailed, md_flag, **kwargs)
 
     def _cal_linear(self, X, y, use_bias=True, detailed=True, md_flag=False, **kwargs):
         """
@@ -213,7 +374,7 @@ class Linear(CalData):
             # 多重共线性: 使用VIF检测
             self.__check_multicollinearity(X, use_bias, md_flag)
 
-    def _cal_logistic(self, X, y, use_bias=True, pos_label=1, draw_roc=False, detailed=True, md_flag=False):
+    def _cal_logistic(self, X, y, use_bias=True, pos_label=1, draw_roc=False, detailed=True, md_flag=False, **kwargs):
         """
         逻辑回归
         :param X: np.ndarray，输入特征。
@@ -296,7 +457,8 @@ class Linear(CalData):
             # 计算ROC曲线和AUC值
             self.__check_auc(X, y, self.log_reg, pos_label, draw_roc, md_flag)
 
-    def _cal_poly(self, X, y, degree=2, include_linear_bias=False, include_poly_bias=False, detailed=True, md_flag=False):
+    def _cal_poly(self, X, y, degree=2, include_linear_bias=False, include_poly_bias=False,
+                  detailed=True, md_flag=False, **kwargs):
         """
         多项式回归
         :param X: np.ndarray，输入特征。
@@ -1113,6 +1275,7 @@ class NaiveBayes(CalData):
         ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
 
 
+# 交叉验证
 class CrossValidation(CalData):
     def __init__(self, df):
         super().__init__(df)
@@ -1217,7 +1380,7 @@ class DimReduction(CalData):
         :param kwargs: 其他参数。
         :return: None
         """
-        show_plt = kwargs.pop("show_plt", True)
+        show_plt = kwargs.get("show_plt", True)
         self.pca = PCA(n_components=n_components, **kwargs)
         X_DR = self.pca.fit_transform(X)
         self.df_DR = pd.concat([pd.DataFrame(X_DR), pd.Series(y, name=y.name)], axis=1)
@@ -1235,8 +1398,8 @@ class DimReduction(CalData):
         :param kwargs: 其他参数。
         :return: None
         """
-        show_plt = kwargs.pop("show_plt", True)
-        self.lda = LinearDiscriminantAnalysis(n_components=n_components, **kwargs)
+        show_plt = kwargs.get("show_plt", True)
+        self.lda = LDA(n_components=n_components, **kwargs)
         X_DR = self.lda.fit_transform(X, y)
         self.df_DR = pd.concat([pd.DataFrame(X_DR), pd.Series(y, name=y.name)], axis=1)
 
@@ -1253,7 +1416,7 @@ class DimReduction(CalData):
         :param kwargs: 其他参数。
         :return: None
         """
-        show_plt = kwargs.pop("show_plt", True)
+        show_plt = kwargs.get("show_plt", True)
         self.tsne = TSNE(n_components=n_components, **kwargs)
         X_DR = self.tsne.fit_transform(X)
         self.df_DR = pd.concat([pd.DataFrame(X_DR), pd.Series(y, name=y.name)], axis=1)
@@ -1301,6 +1464,8 @@ class Cluster(CalData):
         :param draw_cluster: bool，是否绘制聚类后的散点图。
         :param ax: plt.axis，绘制图的坐标轴。
         :param kwargs: 其他参数。
+          affinity: Any = "euclidean",  # 距离度量，包括{"euclidean", "l1", "l2", "manhattan", "cosine", "precomputed"}
+          linkage: Any = "ward",        # 链接标准，包括{"ward", "complete", "average", "single"}
         :return: None
         """
         X = self.df[X_name]
@@ -1332,7 +1497,7 @@ class Cluster(CalData):
         :param kwargs: 其他参数。
         :return: None
         """
-        show_plt = kwargs.pop("show_plt", True)
+        show_plt = kwargs.get("show_plt", True)
         self.kmeans = KMeans(n_clusters=n_clusters, **kwargs)
         y_pred = self.kmeans.fit_predict(X)
         self.df_cluster = pd.concat([pd.DataFrame(X), pd.Series(y_pred, name="cluster")], axis=1)
@@ -1350,7 +1515,7 @@ class Cluster(CalData):
         :param kwargs: 其他参数。
         :return: None
         """
-        show_plt = kwargs.pop("show_plt", True)
+        show_plt = kwargs.get("show_plt", True)
         self.agg = AgglomerativeClustering(n_clusters=n_clusters, **kwargs)
         y_pred = self.agg.fit_predict(X)
         self.df_cluster = pd.concat([pd.DataFrame(X), pd.Series(y_pred, name="cluster")], axis=1)
@@ -1369,7 +1534,7 @@ class Cluster(CalData):
         :param kwargs: 其他参数。
         :return: None
         """
-        show_plt = kwargs.pop("show_plt", True)
+        show_plt = kwargs.get("show_plt", True)
         self.dbscan = DBSCAN(eps=eps, min_samples=min_samples, **kwargs)
         y_pred = self.dbscan.fit_predict(X)
         self.df_cluster = pd.concat([pd.DataFrame(X), pd.Series(y_pred, name="cluster")], axis=1)
@@ -1478,138 +1643,138 @@ class Cluster(CalData):
 
 
 # 以下是一些废弃的函数，请不要使用
-def cal_linear(X, y, use="sklearn", use_bias=True):
-    """
-    [基本弃用，请参考Linear类]
-    计算线性回归的参数θ。
-    :param X:
-    :param y:
-    :param use:
-    :param use_bias:
-    :return:
-    """
-    if use == "formula":
-        X_b = np.c_[np.ones((X.shape[0], 1)), X]
-        theta_best = np.linalg.inv(X_b.T.dot(X_b)).dot(X_b.T).dot(y)  # (X^T @ X)^(-1) @ X^T @ y
-        print("公式计算的θ：", theta_best)
-    elif use == "sklearn":
-        lin_reg = LinearRegression(fit_intercept=use_bias)
-        lin_reg.fit(X, y)
-        print("偏置参数：", lin_reg.intercept_)
-        print("权重参数：", lin_reg.coef_)
-
-
-def cal_skew_kurtosis(data_series):
-    """
-    [用的很少，暂时不做修订了]
-    计算数据列的偏度、峰度以及正态分布程度检验结果。
-    标准正态分布偏度和峰度均为0。如果峰度绝对值小于10并且偏度绝对值小于3，说明数据基本可接受为正态分布。
-    1.skew: float，偏度。
-      偏度：描述数据分布形态偏斜程度的统计量。
-        \text{Skewness} = \frac{E[(X-\mu)^3]}{\sigma^3}
-        偏度>0:数据分布右偏（正偏，众数<中位数<均值）。偏度<0:表示左偏（负偏，众数>中位数>均值）。偏度=0:对称
-      偏度标准误： sqrt( 6*N*(N-1)/((N-2)*(N+1)*(N+3)) )
-    2.skewtest: tuple，偏度检验的结果。如果 Z 分数的绝对值较大，且 p 值小于显著性水平（通常设定为 0.05），就可以拒绝原假设
-      statistic：z-score是一个标准化的分数，用于衡量一个数据点与其所在数据集均值的偏离程度，通常用于假设检验。
-        单个样本的z-score：z = \frac{X-\mu}{\sigma} ]
-        多个样本的z-score：Z = \frac{g_1}{\sqrt{\frac{6n(n-1)}{(n-2)(n+1)(n+3)}}}，式中g_1为样本偏度，n为样本大小
-      pvalue：p值是在假设检验中用于衡量观察到的数据与某一假设模型一致程度的概率。p值越小(通常设定显著性水平为0.05)，
-        表示观察到的数据越不可能出现在原假设的情况下，从而提供了拒绝原假设(null hypothesis)的证据。
-    kurtosis: float，峰度。
-      峰度标准误 = 4*(N**2 -1)*偏度标准误 /((N-3)*(N+5))
-    normaltest: tuple，正态分布程度检验结果，包含统计量和 p-value。
-    :param data_series: pandas Series，要计算统计量的数据列。
-    """
-    n = len(data_series)
-
-    skew = stats.skew(data_series)  # 偏度
-    skew_se = np.sqrt(6 * n * (n - 1) / ((n - 2) * (n + 1) * (n + 3)))  # 偏度标准误
-    skewtest = stats.skewtest(data_series)  # 偏度检验的结果
-    kurtosis = stats.kurtosis(data_series)  # 峰度
-    kurtosis_se = np.sqrt(24 * n * (n - 1) / ((n - 2) * (n - 3) * (n + 5) * (n + 7)))  # 峰度标准误
-    kurtosistest = stats.kurtosistest(data_series)  # 峰度检验
-    normaltest = stats.normaltest(data_series)  # 正态分布程度检验
-
-    print("偏度", skew)
-    print("偏度标准误", skew_se)
-    print("偏度检验", skewtest)
-    print("峰度", kurtosis)
-    print("峰度标准误", kurtosis_se)
-    print("峰度检验", kurtosistest)
-    print("正态分布程度检验", normaltest)
-
-
-def cal_net(X_train, y_train, net=None, lr=0.001, batch_size=16, num_epochs=100, use_bias=True, loss_fuc='MSE',
-            optim_fun="SGD", show_interval=10):
-    """
-    [基本弃用，请参考easier_nn]
-    :param X_train:
-    :param y_train:
-    :param net:
-    :param lr:
-    :param batch_size:
-    :param num_epochs:
-    :param use_bias:
-    :param loss_fuc: 均方误差"MSE"适用回归问题; 交叉熵适用分类，衡量两个概率分布之间的差异。二分类问题(标签是0,1):
-        二元交叉熵损失"BCE"; 多分类问题(标签是one-hot编码的向量):类别交叉熵损失"CE"。
-    :param optim_fun: 随机梯度下降"SGD"; 结合动量和指数衰减"Adam"
-    :param show_interval:
-    :return: net
-    """
-    if net is None:
-        net = nn.Sequential(nn.Flatten(),
-                            nn.Linear(X_train.shape[1], 1, bias=use_bias))
-        net[1].weight.data.normal_(0, 0.01)
-        if use_bias:
-            net[1].bias.data.fill_(0)
-
-    if loss_fuc == "MSE":
-        loss = nn.MSELoss()
-    elif loss_fuc == "BCE":
-        loss = nn.BCELoss()
-    elif loss_fuc == "CE":
-        loss = nn.CrossEntropyLoss()
-    else:
-        print("暂不支持此种损失函数，这里使用MSE代替")
-        loss = nn.MSELoss()
-
-    if optim_fun == "SGD":
-        optimizer = torch.optim.SGD(net.parameters(), lr=lr)
-    elif optim_fun == "Adam":
-        optimizer = torch.optim.Adam(net.parameters(), lr=lr)
-    else:
-        print("暂不支持此种优化方法，这里使用SGD代替")
-        optimizer = torch.optim.SGD(net.parameters(), lr=lr)
-
-    if isinstance(X_train, torch.Tensor) and isinstance(y_train, torch.Tensor):
-        data_iter = load_array((X_train, y_train), batch_size)
-    elif isinstance(X_train, pd.DataFrame) and isinstance(y_train, pd.DataFrame):
-        X_train = torch.tensor(X_train.values, dtype=torch.float32)
-        y_train = torch.tensor(y_train.values, dtype=torch.float32)
-        data_iter = load_array((X_train, y_train), batch_size)
-    else:
-        # 如果数据类型不符合要求，可以抛出错误或者做其他处理
-        raise TypeError("Input data type not supported.")
-
-    for epoch in range(num_epochs):
-        for X, y in data_iter:
-            loss_value = loss(net(X), y)  # 这里的net返回输入x经过定义的网络所计算出的值
-            optimizer.zero_grad()  # 清除上一次的梯度值
-            loss_value.backward()  # 反向传播，求参数的梯度
-            # for param in net.parameters():
-            #     print(param.grad)
-            optimizer.step()  # 步进 根据指定的优化算法进行参数的寻优
-        if epoch % show_interval == 0:
-            loss_value = loss(net(X_train), y_train)
-            print(f'epoch {epoch + 1}, loss {loss_value:f}')
-
-    # w1 = net[1].weight.data
-    # w3 = net[3].weight.data
-    # print('w1:\n', w1, '\nw2:\n', w3)
-    # b1 = net[1].bias.data
-    # print('b1:', b1, '\nb2:None')
-
-    return net
-
-
-
+# def cal_linear(X, y, use="sklearn", use_bias=True):
+#     """
+#     [基本弃用，请参考Linear类]
+#     计算线性回归的参数θ。
+#     :param X:
+#     :param y:
+#     :param use:
+#     :param use_bias:
+#     :return:
+#     """
+#     if use == "formula":
+#         X_b = np.c_[np.ones((X.shape[0], 1)), X]
+#         theta_best = np.linalg.inv(X_b.T.dot(X_b)).dot(X_b.T).dot(y)  # (X^T @ X)^(-1) @ X^T @ y
+#         print("公式计算的θ：", theta_best)
+#     elif use == "sklearn":
+#         lin_reg = LinearRegression(fit_intercept=use_bias)
+#         lin_reg.fit(X, y)
+#         print("偏置参数：", lin_reg.intercept_)
+#         print("权重参数：", lin_reg.coef_)
+#
+#
+# def cal_skew_kurtosis(data_series):
+#     """
+#     [用的很少，暂时不做修订了]
+#     计算数据列的偏度、峰度以及正态分布程度检验结果。
+#     标准正态分布偏度和峰度均为0。如果峰度绝对值小于10并且偏度绝对值小于3，说明数据基本可接受为正态分布。
+#     1.skew: float，偏度。
+#       偏度：描述数据分布形态偏斜程度的统计量。
+#         \text{Skewness} = \frac{E[(X-\mu)^3]}{\sigma^3}
+#         偏度>0:数据分布右偏（正偏，众数<中位数<均值）。偏度<0:表示左偏（负偏，众数>中位数>均值）。偏度=0:对称
+#       偏度标准误： sqrt( 6*N*(N-1)/((N-2)*(N+1)*(N+3)) )
+#     2.skewtest: tuple，偏度检验的结果。如果 Z 分数的绝对值较大，且 p 值小于显著性水平（通常设定为 0.05），就可以拒绝原假设
+#       statistic：z-score是一个标准化的分数，用于衡量一个数据点与其所在数据集均值的偏离程度，通常用于假设检验。
+#         单个样本的z-score：z = \frac{X-\mu}{\sigma} ]
+#         多个样本的z-score：Z = \frac{g_1}{\sqrt{\frac{6n(n-1)}{(n-2)(n+1)(n+3)}}}，式中g_1为样本偏度，n为样本大小
+#       pvalue：p值是在假设检验中用于衡量观察到的数据与某一假设模型一致程度的概率。p值越小(通常设定显著性水平为0.05)，
+#         表示观察到的数据越不可能出现在原假设的情况下，从而提供了拒绝原假设(null hypothesis)的证据。
+#     kurtosis: float，峰度。
+#       峰度标准误 = 4*(N**2 -1)*偏度标准误 /((N-3)*(N+5))
+#     normaltest: tuple，正态分布程度检验结果，包含统计量和 p-value。
+#     :param data_series: pandas Series，要计算统计量的数据列。
+#     """
+#     n = len(data_series)
+#
+#     skew = stats.skew(data_series)  # 偏度
+#     skew_se = np.sqrt(6 * n * (n - 1) / ((n - 2) * (n + 1) * (n + 3)))  # 偏度标准误
+#     skewtest = stats.skewtest(data_series)  # 偏度检验的结果
+#     kurtosis = stats.kurtosis(data_series)  # 峰度
+#     kurtosis_se = np.sqrt(24 * n * (n - 1) / ((n - 2) * (n - 3) * (n + 5) * (n + 7)))  # 峰度标准误
+#     kurtosistest = stats.kurtosistest(data_series)  # 峰度检验
+#     normaltest = stats.normaltest(data_series)  # 正态分布程度检验
+#
+#     print("偏度", skew)
+#     print("偏度标准误", skew_se)
+#     print("偏度检验", skewtest)
+#     print("峰度", kurtosis)
+#     print("峰度标准误", kurtosis_se)
+#     print("峰度检验", kurtosistest)
+#     print("正态分布程度检验", normaltest)
+#
+#
+# def cal_net(X_train, y_train, net=None, lr=0.001, batch_size=16, num_epochs=100, use_bias=True, loss_fuc='MSE',
+#             optim_fun="SGD", show_interval=10):
+#     """
+#     [基本弃用，请参考easier_nn]
+#     :param X_train:
+#     :param y_train:
+#     :param net:
+#     :param lr:
+#     :param batch_size:
+#     :param num_epochs:
+#     :param use_bias:
+#     :param loss_fuc: 均方误差"MSE"适用回归问题; 交叉熵适用分类，衡量两个概率分布之间的差异。二分类问题(标签是0,1):
+#         二元交叉熵损失"BCE"; 多分类问题(标签是one-hot编码的向量):类别交叉熵损失"CE"。
+#     :param optim_fun: 随机梯度下降"SGD"; 结合动量和指数衰减"Adam"
+#     :param show_interval:
+#     :return: net
+#     """
+#     if net is None:
+#         net = nn.Sequential(nn.Flatten(),
+#                             nn.Linear(X_train.shape[1], 1, bias=use_bias))
+#         net[1].weight.data.normal_(0, 0.01)
+#         if use_bias:
+#             net[1].bias.data.fill_(0)
+#
+#     if loss_fuc == "MSE":
+#         loss = nn.MSELoss()
+#     elif loss_fuc == "BCE":
+#         loss = nn.BCELoss()
+#     elif loss_fuc == "CE":
+#         loss = nn.CrossEntropyLoss()
+#     else:
+#         print("暂不支持此种损失函数，这里使用MSE代替")
+#         loss = nn.MSELoss()
+#
+#     if optim_fun == "SGD":
+#         optimizer = torch.optim.SGD(net.parameters(), lr=lr)
+#     elif optim_fun == "Adam":
+#         optimizer = torch.optim.Adam(net.parameters(), lr=lr)
+#     else:
+#         print("暂不支持此种优化方法，这里使用SGD代替")
+#         optimizer = torch.optim.SGD(net.parameters(), lr=lr)
+#
+#     if isinstance(X_train, torch.Tensor) and isinstance(y_train, torch.Tensor):
+#         data_iter = load_array((X_train, y_train), batch_size)
+#     elif isinstance(X_train, pd.DataFrame) and isinstance(y_train, pd.DataFrame):
+#         X_train = torch.tensor(X_train.values, dtype=torch.float32)
+#         y_train = torch.tensor(y_train.values, dtype=torch.float32)
+#         data_iter = load_array((X_train, y_train), batch_size)
+#     else:
+#         # 如果数据类型不符合要求，可以抛出错误或者做其他处理
+#         raise TypeError("Input data type not supported.")
+#
+#     for epoch in range(num_epochs):
+#         for X, y in data_iter:
+#             loss_value = loss(net(X), y)  # 这里的net返回输入x经过定义的网络所计算出的值
+#             optimizer.zero_grad()  # 清除上一次的梯度值
+#             loss_value.backward()  # 反向传播，求参数的梯度
+#             # for param in net.parameters():
+#             #     print(param.grad)
+#             optimizer.step()  # 步进 根据指定的优化算法进行参数的寻优
+#         if epoch % show_interval == 0:
+#             loss_value = loss(net(X_train), y_train)
+#             print(f'epoch {epoch + 1}, loss {loss_value:f}')
+#
+#     # w1 = net[1].weight.data
+#     # w3 = net[3].weight.data
+#     # print('w1:\n', w1, '\nw2:\n', w3)
+#     # b1 = net[1].bias.data
+#     # print('b1:', b1, '\nb2:None')
+#
+#     return net
+#
+#
+#
