@@ -177,8 +177,8 @@
 #               labels={"year": "Year",
 #                       "pop": "Population"})
 # fig.show()
-import numpy as np
-from sklearn.preprocessing import PolynomialFeatures
+# import numpy as np
+# from sklearn.preprocessing import PolynomialFeatures
 # X = np.arange(24).reshape(8, 3)
 # print(X)
 # poly = PolynomialFeatures(3)
@@ -272,6 +272,74 @@ from sklearn.preprocessing import PolynomialFeatures
 # df_new = pd.DataFrame(X_new, columns=selected_features)
 # print(df_new)
 
-import cProfile
+# import cProfile
+#
+# cProfile.run('np.std(np.random.rand(100000000))')
 
-cProfile.run('np.std(np.random.rand(100000000))')
+# from itertools import combinations
+#
+# users = ['A', 'B', 'C', 'D']
+# pairs = list(combinations(users, 2))
+#
+# print(pairs)
+#
+# import networkx as nx
+# from networkx.algorithms import community
+#
+# # 构建商品图
+# G = nx.Graph()
+#
+# # 假设 swing_scores 是商品对及其 Swing 分数的列表，例如 [(item1, item2, weight), ...]
+# swing_scores = [
+#     ('A', 'B', 0.9), ('A', 'C', 0.8), ('B', 'C', 0.8),
+#     ('C', 'D', 0.8), ('D', 'E', 0.2), ('E', 'A', 0.1)
+# ]
+#
+# # 添加边和权重
+# for item1, item2, weight in swing_scores:
+#     G.add_edge(item1, item2, weight=weight)
+#
+# # 执行标签传播算法进行聚类
+# communities = community.label_propagation_communities(G)
+#
+# # 将商品分配到聚类
+# item_to_community = {}
+# for community_id, community_items in enumerate(communities):
+#     for item in community_items:
+#         item_to_community[item] = community_id
+#
+# # 计算聚类层面的相似度 s2(i,j)
+# def calculate_s2(item1, item2):
+#     if item_to_community[item1] == item_to_community[item2]:
+#         return 1.0  # 相同聚类中的商品相似度为 1
+#     else:
+#         return 0.0  # 不同聚类中的商品相似度为 0
+#
+# # 示例计算
+# item1 = 'A'
+# item2 = 'B'
+# s2_value = calculate_s2(item1, item2)
+# print(f's2({item1},{item2}) = {s2_value}')
+#
+# item1 = 'A'
+# item2 = 'E'
+# s2_value = calculate_s2(item1, item2)
+# print(f's2({item1},{item2}) = {s2_value}')
+
+
+import numpy as np
+
+# 定义矩阵 R 和 Q
+P = np.array([[0.1, 0.9, 0.6],
+              [0.8, 0.5, 0.4]])
+
+Q = np.array([[0.7, 0.2, 0.3, 0.4],
+              [0.1, 0.6, 0.9, 0.2],
+              [0.5, 0.8, 0.4, 0.1]])
+
+# 计算矩阵乘法 R * Q
+result = np.dot(P, Q)
+
+# 输出结果
+print("结果矩阵 P * Q:")
+print(result)

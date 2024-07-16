@@ -135,6 +135,7 @@ for epoch in range(num_epochs):
     model.train()
     optimizer.zero_grad()
     outputs = model(X_train)
+    print(X_train.shape, y_train.shape, outputs.shape)
     loss = criterion(outputs, y_train)
     loss.backward()
     optimizer.step()

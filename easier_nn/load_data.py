@@ -19,7 +19,7 @@ def load_array(data_arrays, batch_size=64, if_shuffle=True):
 
 def trainset_to_dataloader(X_train, y_train, batch_size=64, y_reshape=False):
     """
-    [easy函数] 将训练集转为DataLoader
+    将训练集转为DataLoader
     :return: DataLoader数据类型
     """
     # 要注意X_train的type是DataFrame
@@ -38,7 +38,7 @@ def trainset_to_dataloader(X_train, y_train, batch_size=64, y_reshape=False):
 
 def testset_to_dataloader(X_test, y_test, batch_size=64, y_reshape=False):
     """
-    [easy函数] 将测试集转为DataLoader
+    将测试集转为DataLoader
     :return: DataLoader数据类型
     """
     if isinstance(X_test, pd.DataFrame) and isinstance(y_test, pd.DataFrame):
