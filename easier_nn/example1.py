@@ -1,33 +1,38 @@
-from sklearn.model_selection import train_test_split
+# mnist数据集，分类
 from torch import nn
 import torch
-
 from easier_nn.classic_dataset import load_mnist
-from easier_nn.load_data import trainset_to_dataloader, testset_to_dataloader
-from easier_nn.train_net import train_net, train_net_with_evaluation
+from easier_nn.classic_net import CNN_Net_for_Mnist, Unet, Depth_CNN_Net_for_Mnist
+from easier_nn.train_net import NetTrainer
 
-X, y = load_mnist()
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.7, random_state=42)
-X_train = X_train.float()
-X_test = X_test.float()
+X, y = load_mnist(if_reshape_X=True)
 
-lr = 0.001  # 学习率
-num_epochs = 100  # 迭代周期
-batch_size = 10  # 每个小批量样本的数量
-train_iter = trainset_to_dataloader(X_train, y_train, batch_size=batch_size)
-test_iter = testset_to_dataloader(X_test, y_test, batch_size=batch_size)
+# print(X.shape)
+
+# net = CNN_Net_for_Mnist()  # 需要改为X, y = load_mnist(if_reshape_X=True)
+# net = Unet()  # 该网络目前似乎有问题，另外还需要设置NetTrainer的target_reshape_1D为False
+# CNN_Net_for_Mnist这个net我电脑跑不动，复制到kaggle上跑出来的结果是：
+# Epoch 1/50, Train Acc: 0.982, Test Acc: 0.9817142857142858
+# Epoch 21/50, Train Acc: 0.9996607142857142, Test Acc: 0.9932142857142857
+# Epoch 41/50, Train Acc: 0.9997321428571428, Test Acc: 0.9925714285714285
+# 你也可以使用下面的网络进行简单测试(acc其实也有90%多)，但是在读入时应该设为X, y = load_mnist(if_reshape_X=False)
 net = nn.Sequential(
     nn.Flatten(),
-    nn.Linear(X_train.shape[1], 10),
-    nn.Softmax(dim=1)
+    nn.Linear(X.shape[1], 64),
+    nn.ReLU(),
+    nn.Linear(64, 10),
 )
 net[1].weight.data.normal_(0, 0.01)
 net[1].bias.data.fill_(0)
-loss = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(net.parameters(), lr=lr)
+net = Depth_CNN_Net_for_Mnist()
 
-# net = train_net(X_train, y_train, data_iter=train_iter, net=net, loss=loss, optimizer=optimizer, lr=lr,
-#                 num_epochs=num_epochs, show_interval=10)
-net, _, _, _ = train_net_with_evaluation(X_train, y_train, X_test, y_test, data_iter=train_iter, test_iter=test_iter,
-                                         net=net, loss=loss, optimizer=optimizer, lr=lr, num_epochs=num_epochs,
-                                         show_interval=2, draw='acc')
+loss_fn = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
+
+trainer = NetTrainer(X, y, net, loss_fn, optimizer, epochs=2, net_type="acc", batch_size=16, target_reshape_1D=False,
+                     print_interval=1, eval_during_training=False)
+trainer.view_parameters()
+trainer.train_net()
+acc = trainer.evaluate_net()
+print(f"Accuracy: {acc}")
+# torch.save(trainer.net, '../model/mnist/mnist_model_small.pth')

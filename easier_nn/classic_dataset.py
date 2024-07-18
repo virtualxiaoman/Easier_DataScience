@@ -28,11 +28,11 @@ def load_mnist(if_reshape_X=False, print_shape=False):
     mnist = fetch_openml('MNIST_784', parser='auto')
     data = mnist['data']
     target = mnist['target']
-    data = np.array(data)  # 将DataFrame转换为NumPy数组
+    data = np.array(data, dtype=np.float32)
     target = np.array(target, dtype=np.int64)
     data = torch.tensor(data)  # 转换为PyTorch Tensor对象
     if if_reshape_X:
-        data = data.reshape(-1, 28, 28)
+        data = data.reshape(-1, 1, 28, 28)  # 还能使用data = np.expand_dims(data,axis=1) (在axis=1上进行扩充)等方法
     target = torch.tensor(target)
     if print_shape:
         print(target.shape)  # torch.Size([70000])

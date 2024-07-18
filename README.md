@@ -1,22 +1,45 @@
 该项目主要是`easier_excel`与`easier_nn`，各个项目的功能如下：
 ```
-easier_excel: 用机器学习处理表格类型的数据
-easier_nn:    使用神经网络进行计算机视觉(CV)和自然语言处理(NLP)等任务
-easier_nlp:   现在不想搞了
-easier_tools: 是一些小工具，比如计时，彩色输出，查看函数、类的参数
-trial_models: 是一些机器学习算法的应用尝试或手动实现
+easier_excel: 更便捷地使用机器学习处理表格类型的数据
+easier_nn:    更便捷地使用神经网络进行CV、NLP等任务
+easier_nlp:   暂时不想搞了
+easier_tools: 小工具，比如计时，控制台彩色输出，dataframe一键写入md，查看类/函数的参数
+trial_models: 机器学习算法的应用尝试或手动实现
+data_analyse: 数据分析的项目，正在开发中
 ```
 
 ## 💦一、Quick Start：
-运行对应项目的示例文件即可:
-
-`easier_excel` 项目里的`example1.py`提供了Quick Start
-
-`easier_nn`项目内的`example1.py`,`example2.py`提供了Quick Start
+你可以运行对应的demo来查看具体的效果：
+`easier_excel` 项目里的`example1.py`提供了Quick Start。
+`easier_nn`项目内的`example1.py`,提供了Quick Start。
 
 你也可以根据我写在下面的[项目功能](#jump_3)来查看一些具体的用法。
 
+你还可以查看以下两个的极其简单的demo：
 
+`easier_excel`的Quick Start（只展示最基础的预处理操作）:
+``` python
+from easier_excel import read_data
+read_data.set_pd_option(max_show=True, float_type=True, decimal_places=4)
+df_origin = read_data.read_df("input/history_xm.xlsx")  # 读取数据
+desc_df = read_data.desc_df(df_origin)
+desc_df.show_df(head_n=5, tail_n=0, show_columns=False, show_dtypes=False, md_flag=True)  #描述数据并自动写入md
+desc_df.process_outlier(method='IQR', show_info=True, process_type='delete', md_flag=True)  # 处理异常值
+```
+
+`easier_nn`的Quick Start（只展示最基础的训练操作）:
+``` python
+from easier_nn.classic_dataset import load_mnist
+from easier_nn.classic_net import CNN_Net_for_Mnist
+from easier_nn.train_net import NetTrainer
+
+X, y = load_mnist(if_reshape_X=True)
+net = CNN_Net_for_Mnist()  # 一个简单的CNN网络
+loss_fn = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
+trainer = NetTrainer(X, y, net, loss_fn, optimizer, epochs=2, net_type="acc", batch_size=16, print_interval=1)
+trainer.train_net()  # 训练网络
+```
 
 ## 🍴二、项目结构
 项目的结构如下：
@@ -65,7 +88,7 @@ trial_models: 是一些机器学习算法的应用尝试或手动实现
 
 ```
 
-我个人比较喜欢`easier_excel`和`trial_models`，其余的有空了然后写写。
+我个人比较喜欢`easier_excel`,`easier_nn`,`trial_models`，其余的有空了然后写写。
 
 
 
@@ -99,7 +122,8 @@ draw_df.draw_feature_importance(target_name='某个关键属性', save_path='../
 ```
 
 ### 😍3.2 easier_nn
-请见`easier_nn`的Quick Start，我懒得写。
+创建`NetTrainer`对象，然后调用`train_net`方法即可训练网络，调用`evaluate_net`方法即可评估网络。
+具体请见`easier_nn`的Quick Start，我懒得写。
 
 ### 😭3.3 easier_nlp
 摆了
@@ -158,7 +182,7 @@ def fill_missing_values(self, fill_type='mean'):
 
 
 ## 🤔四、未来更新方向
-主要还是机器学习。神经网络实在是💩，我训练不了。
+主要还是机器学习与神经网络。不过神经网络实在是💩，我训练不了，kaggle上面GPU的显存感觉也不太够，纯纯构式啊！
 
 关于代码其余的具体描述，暂时没时间写描述┭┮﹏┭┮
 
