@@ -24,13 +24,13 @@ print(SG_word_vectors.similarity('love', 'enjoy'))  # 计算'love'和'enjoy'的�
 print(CBOW_word_vectors['natural'])
 print(CBOW_word_vectors.similarity('love', 'enjoy'))
 
-from nltk.corpus import wordnet as wn
-
-poses = {'n': 'noun', 'v': 'verb', 's': 'adj (s)', 'a': 'adj', 'r': 'adv'}
-for synset in wn.synsets("good"):
-    print("{}: {}".format(poses[synset.pos()], ", ".join([l.name() for l in synset.lemmas()])))
-
-panda = wn.synset("panda.n.01")
-hyper = lambda s: s.hypernyms()
-print(list(panda.closure(hyper)))
+# from nltk.corpus import wordnet as wn
+#
+# poses = {'n': 'noun', 'v': 'verb', 's': 'adj (s)', 'a': 'adj', 'r': 'adv'}
+# for synset in wn.synsets("good"):
+#     print("{}: {}".format(poses[synset.pos()], ", ".join([l.name() for l in synset.lemmas()])))
+#
+# panda = wn.synset("panda.n.01")
+# hyper = lambda s: s.hypernyms()
+# print(list(panda.closure(hyper)))
 

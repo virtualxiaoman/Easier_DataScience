@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader
 import pandas as pd
 
-
+# 本文件最好不要再调用了，但是由于历史遗留问题，现在还不能完全删除。
 def load_array(data_arrays, batch_size=64, if_shuffle=True):
     """
     [底层函数] 构造一个PyTorch数据迭代器

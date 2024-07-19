@@ -11,7 +11,7 @@ from easier_nn.load_data import trainset_to_dataloader, testset_to_dataloader
 from easier_excel.draw_data import plot_xy
 
 
-def load_mnist(if_reshape_X=False, print_shape=False):
+def load_mnist(flatten=False, print_shape=False):
     """
     载入mnist数据集
     [使用示例]:
@@ -21,7 +21,7 @@ def load_mnist(if_reshape_X=False, print_shape=False):
         X_test = X_test.float()
         train_iter = trainset_to_dataloader(X_train, y_train)
         test_iter = testset_to_dataloader(X_test, y_test)
-    :param if_reshape_X: 是否将X转换为28*28的形状，也就是[70000, 784]转换为[70000, 28, 28]
+    :param flatten: 是否将X转换为28*28的形状，也就是[70000, 784]转换为[70000, 28, 28]
     :param print_shape: 是否打印数据的shape
     :return: data, target (是PyTorch Tensor对象)
     """
@@ -31,7 +31,8 @@ def load_mnist(if_reshape_X=False, print_shape=False):
     data = np.array(data, dtype=np.float32)
     target = np.array(target, dtype=np.int64)
     data = torch.tensor(data)  # 转换为PyTorch Tensor对象
-    if if_reshape_X:
+    # if unflatten:
+    if not flatten:
         data = data.reshape(-1, 1, 28, 28)  # 还能使用data = np.expand_dims(data,axis=1) (在axis=1上进行扩充)等方法
     target = torch.tensor(target)
     if print_shape:
@@ -54,7 +55,7 @@ class fashion_mnist:
         self.y_train = None
         self.y_test = None
 
-    def load_fashion_mnist(self, data_path='data', flatten=True):
+    def load_fashion_mnist(self, data_path='data', flatten=False):
         transform = torchvision.transforms.ToTensor()  # 定义数据变换
 
         train_dataset = FashionMNIST(root=data_path, train=True, download=True, transform=transform)
@@ -75,6 +76,10 @@ class fashion_mnist:
         # 归一化像素值至 0 到 1 之间
         self.X_train = self.X_train / 255.0
         self.X_test = self.X_test / 255.0
+
+        self.X = torch.cat((self.X_train, self.X_test), dim=0)
+        self.y = torch.cat((self.y_train, self.y_test), dim=0)
+
         # print(self.X_train.shape)  # torch.Size([60000, 784])
         # print(self.y_train.shape)  # torch.Size([60000])
 

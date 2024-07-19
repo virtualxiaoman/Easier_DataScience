@@ -10,7 +10,6 @@ from sklearn.model_selection import train_test_split
 class NetTrainer:
     """
     这是一个简易的nn训练器。
-    支持net= nn.Sequential()与class Net(nn.Module)。
 
     你可以使用下面2个代码快速上手：
 
@@ -86,29 +85,33 @@ class NetTrainer:
 
         print(trainer.test_acc_list)
     """
-    def __init__(self, data, target, net, loss_fn, optimizer,
-                 test_size=0.2, batch_size=64, epochs=100,
-                 net_type="loss", print_interval=20, eval_during_training=True,
-                 device=None, **kwargs):
+    def __init__(self, data, target, net, loss_fn, optimizer,   # 必要参数，数据与网络的基本信息
+                 test_size=0.2, batch_size=64, epochs=100,      # 可选参数，用于训练
+                 net_type="loss",                               # 比较重要的参数，用于选择训练的类型（与评估指标有关）
+                 eval_during_training=True,  # 比较重要的参数，训练时是否进行评估（与显存有关）
+                 print_interval=20,                             # 可选参数，训练时的输出间隔
+
+                 device=None,                                   # 可选参数，设备选择
+                 **kwargs):
         """
-        初始化模型
-        分类时应当确保数据的形状是 X:(batch, features), y(batch)，不然使用CrossEntropyLoss会报错。
-        :param data: 数据，X
-        :param target: 目标，y
-        :param net: pytorch网络，需要继承nn.Module
+        初始化模型。
+
+        :param data: 数据，X or (X_train, X_test)
+        :param target: 目标，y or (y_train, y_test)
+        :param net: 支持 net=nn.Sequential() or class Net(nn.Module)
         :param loss_fn: 损失函数，例如：
             nn.MSELoss()  # 回归，y的维度应该是(batch,)
             nn.CrossEntropyLoss()  # 分类，y的维度应该是(batch,)，并且网络的最后一层不需要加softmax
             nn.BCELoss()  # 二分类，y的维度应该是(batch,)，并且网络的最后一层需要加sigmoid
         :param optimizer: 优化器
-        :param test_size: 测试集大小，支持浮点数或整数
+        :param test_size: 测试集大小，支持浮点数或整数。该参数在data和target是tuple时无效
         :param batch_size: 批量大小
         :param epochs: 训练轮数
         :param net_type: 模型类型，只可以是"loss"(回归-损失)或"acc"(分类-准确率)
         :param print_interval: 打印间隔，请注意train_loss_list等间隔也是这个
         :param eval_during_training: 训练时是否进行评估，当显存不够时，可以设置为False，等到训练结束之后再进行评估
           设置为False时，不会影响训练集上的Loss的输出，但是无法输出验证集上的loss、训练集与验证集上的acc
-        :param device: 设备，支持"cuda"或"cpu"，默认为None，自动优先选择cuda
+        :param device: 设备，支持"cuda"或"cpu"，默认为None，自动优先选择"cuda"
         :param kwargs: 其他参数，包括：
           target_reshape_1D: 是否将y的维度转换为1维，默认为True
         """
@@ -117,14 +120,14 @@ class NetTrainer:
         # 设备参数
         self.device = device if device else torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         # 数据参数
-        self.data = data  # X
-        self.target = target  # y
+        self.data = data  # X or (X_train, X_test)
+        self.target = target  # y or (y_train, y_test)
         self.test_size = test_size
         self.X_train, self.X_test, self.y_train, self.y_test = None, None, None, None
         self.train_loader, self.test_loader = None, None
         # 网络参数
         self.net = net.to(self.device)
-        # self.ney = torch.compile(self.net)  # RuntimeError: Windows not yet supported for torch.compile 哈哈哈！
+        # self.net = torch.compile(self.net)  # RuntimeError: Windows not yet supported for torch.compile 哈哈哈！
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         # 训练参数
@@ -153,12 +156,19 @@ class NetTrainer:
         #     self.target = pd.DataFrame(self.target)
 
         # 检查self.data与self.target的shape是否一致
-        if self.data.shape[0] != self.target.shape[0]:
-            raise ValueError(f"data和target的shape[0]不相同: "
-                             f"data({self.data.shape[0]}) and target({self.target.shape[0]})")
-
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.data, self.target,
-                                                                                test_size=self.test_size)
+        # 如果传入的就是tuple，则表示已经划分好了训练集和测试集
+        if isinstance(self.data, tuple) and isinstance(self.target, tuple):
+            self.X_train, self.X_test = self.data
+            self.y_train, self.y_test = self.target
+            print("[init_loader]因为传入的是元组，所以默认已经划分好了训练集和测试集。默认元组第一个是train，第二个为test。")
+        # 否则，需要划分训练集和测试集
+        else:
+            if self.data.shape[0] != self.target.shape[0]:
+                raise ValueError(
+                    f"data和target的shape[0]不相同: data({self.data.shape[0]}) and target({self.target.shape[0]})")
+            self.X_train, self.X_test, self.y_train, self.y_test = \
+                train_test_split(self.data, self.target, test_size=self.test_size)
+            print(f"[init_loader]传入的是X, y，则按照test_size={self.test_size}划分训练集和测试集")
 
         # 创建DataLoaders
         self.train_loader = self.create_dataloader(self.X_train, self.y_train)
@@ -204,6 +214,9 @@ class NetTrainer:
                 self.optimizer.step()
                 # 计算损失
                 loss_sum += loss.item()
+                # 释放显存
+                del X, y, outputs  # 删除变量
+                torch.cuda.empty_cache()  # 释放显存
             loss_epoch = loss_sum / len(self.train_loader)
             if epoch % self.print_interval == 0:
                 if self.net_type == "loss":
@@ -222,38 +235,43 @@ class NetTrainer:
         self.eval_during_training = True  # 训练完成后，可以进行评估
 
     # [主函数]评估模型
-    def evaluate_net(self, eval_type="test"):
+    def evaluate_net(self, eval_type="test", delete_train=False):
         """
         评估模型
         :param eval_type: 评估类型，支持"test"和"train"
+        :param delete_train: delete_train=True表示删除训练集，只保留测试集，这样可以释放显存
         :return: 损失或准确率，依据self.net_type而定
         """
         if self.eval_during_training:
             self.__original_dataset_to_device()  # 如果要在训练时评估，需要将数据转移到设备上
         else:
-            return None  # 如果不在训练时评估，直接返回None
+            return '"No eval"'  # 不在训练时评估
+        if delete_train:
+            del self.X_train, self.y_train
+            torch.cuda.empty_cache()
         self.net.eval()
-        if self.net_type == "loss":
-            if eval_type == "test":
-                loss = self.loss_fn(self.net(self.X_test), self.y_test).item()
-            else:
-                # 事实上一般不调用这个，因为训练集的loss在训练时已经计算了
-                loss = self.loss_fn(self.net(self.X_train), self.y_train).item()
-            self.net.train()
-            return loss
-        elif self.net_type == "acc":
-            if eval_type == "test":
-                predictions = torch.argmax(self.net(self.X_test), dim=1).type(self.y_test.dtype)
-                correct = (predictions == self.y_test).sum().item()
-                n = self.y_test.numel()
-                acc = correct / n
-            else:
-                predictions = torch.argmax(self.net(self.X_train), dim=1).type(self.y_train.dtype)
-                correct = (predictions == self.y_train).sum().item()
-                n = self.y_train.numel()
-                acc = correct / n
-            self.net.train()
-            return acc
+        with torch.no_grad():  # 在评估时禁用梯度计算，节省内存
+            if self.net_type == "loss":
+                if eval_type == "test":
+                    loss = self.loss_fn(self.net(self.X_test), self.y_test).item()
+                else:
+                    # 事实上一般不调用这个，因为训练集的loss在训练时已经计算了
+                    loss = self.loss_fn(self.net(self.X_train), self.y_train).item()
+                self.net.train()
+                return loss
+            elif self.net_type == "acc":
+                if eval_type == "test":
+                    predictions = torch.argmax(self.net(self.X_test), dim=1).type(self.y_test.dtype)
+                    correct = (predictions == self.y_test).sum().item()
+                    n = self.y_test.numel()
+                    acc = correct / n
+                else:
+                    predictions = torch.argmax(self.net(self.X_train), dim=1).type(self.y_train.dtype)
+                    correct = (predictions == self.y_train).sum().item()
+                    n = self.y_train.numel()
+                    acc = correct / n
+                self.net.train()
+                return acc
         # total, correct = 0, 0
         # with torch.no_grad():
         #     for inputs, labels in self.test_loader:
@@ -265,7 +283,7 @@ class NetTrainer:
         #
         # print(f'Accuracy: {100 * correct / total}%')
 
-    # [主函数]查看模型参数，使用Netron(需要安装)可视化更好，这里只是简单的查看
+    # [主函数]查看模型参数。使用Netron(需要安装)可视化更好，这里只是简单的查看
     def view_parameters(self, view_struct=True, view_params_count=True):
         # if view_layers:
         #     for layer in self.net.children():
@@ -331,6 +349,7 @@ class NetTrainer:
         else:
             raise ValueError(f"[_dataframe_to_tensor]数据长度有误{len(dtypes)}")
 
+    # 将y的维度转换为1维
     def _target_reshape_1D(self, y):
         """
         将y的维度转换为1维
@@ -344,7 +363,9 @@ class NetTrainer:
         else:
             return y
 
+    # 将原始数据转移到设备上
     def __original_dataset_to_device(self):
+        # 暂时不知道只使用self.original_dataset_to_device是否会有问题，或许可以直接检查self.X_train.device(有问题再改吧)
         if not self.original_dataset_to_device:
             # 将数据转移到设备上
             self.X_train, self.X_test, self.y_train, self.y_test = self.X_train.to(self.device), self.X_test.to(
