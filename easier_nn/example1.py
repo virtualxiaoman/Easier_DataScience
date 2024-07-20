@@ -34,6 +34,6 @@ trainer = NetTrainer(X, y, net, loss_fn, optimizer, epochs=2, net_type="acc", ba
                      print_interval=1, eval_during_training=False)
 trainer.view_parameters()
 trainer.train_net()
-acc = trainer.evaluate_net(delete_train=True)  # delete_train=True表示删除训练集，只保留测试集
+acc = trainer.evaluate_net(delete_train=True)  # delete_train=True表示从cuda上删除训练集，只保留测试集
 print(f"Accuracy: {acc}")
 # torch.save(trainer.net, '../model/mnist/mnist_model_small.pth')

@@ -88,9 +88,8 @@ class NetTrainer:
     def __init__(self, data, target, net, loss_fn, optimizer,   # 必要参数，数据与网络的基本信息
                  test_size=0.2, batch_size=64, epochs=100,      # 可选参数，用于训练
                  net_type="loss",                               # 比较重要的参数，用于选择训练的类型（与评估指标有关）
-                 eval_during_training=True,  # 比较重要的参数，训练时是否进行评估（与显存有关）
+                 eval_during_training=True,                     # 比较重要的参数，训练时是否进行评估（与显存有关）
                  print_interval=20,                             # 可选参数，训练时的输出间隔
-
                  device=None,                                   # 可选参数，设备选择
                  **kwargs):
         """
