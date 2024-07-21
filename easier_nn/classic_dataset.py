@@ -139,9 +139,10 @@ class VirtualDataset:
         self.x = torch.linspace(self.start, self.end, self.num_points)
         self.y = None
 
-    def sinx(self, w=0.01, noise_mu=0, noise_sigma=0.2, show_plt=False):
-        noise = torch.normal(noise_mu, noise_sigma, (self.num_points,))
-        self.y = torch.sin(w*self.x) + noise
+    def sinx(self, w=0.1, noise_mu=0, noise_sigma=0.2, show_plt=False):
+        # noise = torch.normal(noise_mu, noise_sigma, (self.num_points,))
+        # self.y = torch.sin(w*self.x) + noise
+        self.y = torch.sin(w * self.x)
         if show_plt:
             plot_xy(self.x.numpy(), self.y.numpy())
 

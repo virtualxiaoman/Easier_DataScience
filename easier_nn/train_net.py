@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 
 class NetTrainer:
     """
-    这是一个简易的nn训练器。
+    这是一个简易的nn训练器。仅支持前馈神经网络，暂不支持RNN等含有隐藏状态的网络。
 
     你可以使用下面2个代码快速上手：
 
@@ -370,6 +370,435 @@ class NetTrainer:
             self.X_train, self.X_test, self.y_train, self.y_test = self.X_train.to(self.device), self.X_test.to(
                 self.device), self.y_train.to(self.device), self.y_test.to(self.device)
             self.original_dataset_to_device = True
+
+
+# GRU可以参考下面的代码，结果很好，等有空再将RNN这种网络的训练合并到NetTrainer中
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+import torch
+import torch.nn as nn
+from easier_nn.classic_dataset import VirtualDataset
+
+x = np.linspace(0, 1000, 1000)
+data = np.sin(0.05 * x)
+
+print(data.shape)
+num_data = len(data)
+split = int(0.8 * num_data)
+print(f'数据集大小：{num_data}')
+# 数据集可视化
+plt.figure()
+plt.scatter(np.arange(split), data[:split],
+            color='blue', s=10, label='training set')
+plt.scatter(np.arange(split, num_data), data[split:],
+            color='orange', s=10, label='test set')
+plt.xlabel('X axis')
+plt.ylabel('Y axis')
+
+plt.legend()
+plt.show()
+# 分割数据集
+train_data = np.array(data[:split])
+test_data = np.array(data[split:])
+
+# 输入序列长度
+seq_len = 20
+# 处理训练数据，把切分序列后多余的部分去掉
+train_num = len(train_data) // (seq_len + 1) * (seq_len + 1)
+train_data = np.array(train_data[:train_num]).reshape(-1, seq_len + 1, 1)
+np.random.seed(0)
+torch.manual_seed(0)
+
+x_train = train_data[:, :seq_len]  # 形状为(num_data, seq_len, input_size)
+y_train = train_data[:, 1: seq_len + 1]
+print(f'训练序列数：{len(x_train)}')
+
+# 转为PyTorch张量
+x_train = torch.from_numpy(x_train).to(torch.float32)
+y_train = torch.from_numpy(y_train).to(torch.float32)
+x_test = torch.from_numpy(test_data[:-1]).to(torch.float32)
+y_test = torch.from_numpy(test_data[1:]).to(torch.float32)
+
+
+class GRU(nn.Module):
+    # 包含PyTorch的GRU和拼接的MLP
+    def __init__(self, input_size, output_size, hidden_size):
+        super().__init__()
+        # GRU模块
+        self.gru = nn.GRU(input_size=input_size, hidden_size=hidden_size)
+        # 将中间变量映射到预测输出的MLP
+        self.linear = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x, hidden):
+        # 前向传播
+        # x的维度为(batch_size, seq_len, input_size)
+        # GRU模块接受的输入为(seq_len, batch_size, input_size)
+        # 因此需要对x进行变换
+        # transpose函数可以交换x的坐标轴
+        # out的维度是(seq_len, batch_size, hidden_size)
+        out, hidden = self.gru(torch.transpose(x, 0, 1), hidden)
+        # 取序列最后的中间变量输入给全连接层
+        out = self.linear(out.view(-1, hidden_size))
+        return out, hidden
+
+
+# 超参数
+input_size = 1  # 输入维度
+output_size = 1  # 输出维度
+hidden_size = 16  # 中间变量维度
+learning_rate = 5e-4
+
+# 初始化网络
+gru = GRU(input_size, output_size, hidden_size)
+gru_optim = torch.optim.Adam(gru.parameters(), lr=learning_rate)
+
+
+# GRU测试函数，x和hidden分别是初始的输入和中间变量
+def test_gru(gru, x, hidden, pred_steps):
+    pred = []
+    inp = x.view(-1, input_size)
+    for i in range(pred_steps):
+        gru_pred, hidden = gru(inp, hidden)
+        pred.append(gru_pred.detach())
+        inp = gru_pred
+    return torch.concat(pred).reshape(-1)
+
+
+# MLP的超参数
+hidden_1 = 32
+hidden_2 = 16
+mlp = nn.Sequential(
+    nn.Linear(input_size, hidden_1),
+    nn.ReLU(),
+    nn.Linear(hidden_1, hidden_2),
+    nn.ReLU(),
+    nn.Linear(hidden_2, output_size)
+)
+mlp_optim = torch.optim.Adam(mlp.parameters(), lr=learning_rate)
+
+
+# MLP测试函数，相比于GRU少了中间变量
+def test_mlp(mlp, x, pred_steps):
+    pred = []
+    inp = x.view(-1, input_size)
+    for i in range(pred_steps):
+        mlp_pred = mlp(inp)
+        pred.append(mlp_pred.detach())
+        inp = mlp_pred
+    return torch.concat(pred).reshape(-1)
+
+
+max_epoch = 150
+criterion = nn.functional.mse_loss
+hidden = None  # GRU的中间变量
+
+# 训练损失
+gru_losses = []
+mlp_losses = []
+gru_test_losses = []
+mlp_test_losses = []
+# 开始训练
+with tqdm(range(max_epoch)) as pbar:
+    for epoch in pbar:
+        st = 0
+        gru_loss = 0.0
+        mlp_loss = 0.0
+        # 随机梯度下降
+        for X, y in zip(x_train, y_train):
+            # 更新GRU模型
+            # 我们不需要通过梯度回传更新中间变量
+            # 因此将其从有梯度的部分分离出来
+            if hidden is not None:
+                hidden.detach_()
+            gru_pred, hidden = gru(X[None, ...], hidden)
+            gru_train_loss = criterion(gru_pred.view(y.shape), y)
+            gru_optim.zero_grad()
+            gru_train_loss.backward()
+            gru_optim.step()
+            gru_loss += gru_train_loss.item()
+            # 更新MLP模型
+            # 需要对输入的维度进行调整，变成(seq_len, input_size)的形式
+            mlp_pred = mlp(X.view(-1, input_size))
+            mlp_train_loss = criterion(mlp_pred.view(y.shape), y)
+            mlp_optim.zero_grad()
+            mlp_train_loss.backward()
+            mlp_optim.step()
+            mlp_loss += mlp_train_loss.item()
+
+        gru_loss /= len(x_train)
+        mlp_loss /= len(x_train)
+        gru_losses.append(gru_loss)
+        mlp_losses.append(mlp_loss)
+
+        # 训练和测试时的中间变量序列长度不同，训练时为seq_len，测试时为1
+        gru_pred = test_gru(gru, x_test[0], hidden[:, -1], len(y_test))
+        mlp_pred = test_mlp(mlp, x_test[0], len(y_test))
+        gru_test_loss = criterion(gru_pred, y_test).item()
+        mlp_test_loss = criterion(mlp_pred, y_test).item()
+        gru_test_losses.append(gru_test_loss)
+        mlp_test_losses.append(mlp_test_loss)
+
+        pbar.set_postfix({
+            'Epoch': epoch,
+            'GRU loss': f'{gru_loss:.4f}',
+            'MLP loss': f'{mlp_loss:.4f}',
+            'GRU test loss': f'{gru_test_loss:.4f}',
+            'MLP test loss': f'{mlp_test_loss:.4f}'
+        })
+
+# 最终测试结果
+gru_preds = test_gru(gru, x_test[0], hidden[:, -1], len(y_test)).numpy()
+mlp_preds = test_mlp(mlp, x_test[0], len(y_test)).numpy()
+
+plt.figure(figsize=(13, 5))
+
+# 绘制训练曲线
+plt.subplot(121)
+x_plot = np.arange(len(gru_losses)) + 1
+plt.plot(x_plot, gru_losses, color='blue', label='GRU training loss')
+plt.plot(x_plot, mlp_losses, color='red', label='MLP training loss')
+plt.plot(x_plot, gru_test_losses, color='blue',
+         linestyle='--', label='GRU test loss')
+plt.plot(x_plot, mlp_test_losses, color='red',
+         linestyle='--', label='MLP test loss')
+plt.xlabel('Training step')
+plt.ylabel('Loss')
+plt.legend(loc='lower left')
+
+# 绘制真实数据与模型预测值的图像
+plt.subplot(122)
+plt.scatter(np.arange(split), data[:split], color='blue',
+            s=10, label='training set')
+plt.scatter(np.arange(split, num_data), data[split:], color='orange',
+            s=10, label='test set')
+plt.scatter(np.arange(split, num_data - 1), mlp_preds, color='purple',
+            s=10, label='MLP preds')
+plt.scatter(np.arange(split, num_data - 1), gru_preds, color='green',
+            s=10, label='GRU preds')
+plt.legend(loc='lower left')
+plt.show()
+"""
+
+# RNN、LSTM可以参考下面的代码
+"""
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from easier_nn.classic_dataset import VirtualDataset
+
+# 定义RNN模型
+class SimpleRNN(nn.Module):
+    def __init__(self, input_size=1, hidden_size=20, output_size=1):
+        super(SimpleRNN, self).__init__()
+        self.hidden_size = hidden_size
+        self.rnn = nn.RNN(input_size, hidden_size, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x, hidden):
+        out, hidden = self.rnn(x, hidden)
+        out = self.fc(out)
+        return out, hidden
+
+    def init_hidden(self, batch_size):
+        return torch.zeros(1, batch_size, self.hidden_size)
+
+
+# 数据处理
+def prepare_data(x, y, seq_length=10):
+    x_seq, y_seq = [], []
+    for i in range(len(x) - seq_length):
+        x_seq.append(x[i:i + seq_length])
+        y_seq.append(y[i + seq_length])
+    x_seq = torch.stack(x_seq)
+    y_seq = torch.stack(y_seq)
+    return x_seq.unsqueeze(-1), y_seq.unsqueeze(-1)
+
+
+# 创建虚拟数据集
+dataset = VirtualDataset()
+dataset.sinx(show_plt=True)
+
+# 准备训练数据
+seq_length = 10
+x_seq, y_seq = prepare_data(dataset.x, dataset.y, seq_length)
+
+# 创建DataLoader
+batch_size = 32
+train_dataset = TensorDataset(x_seq, y_seq)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+# 初始化模型、损失函数和优化器
+input_size = 1
+hidden_size = 20
+output_size = 1
+model = SimpleRNN(input_size, hidden_size, output_size)
+criterion = nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# 训练模型
+num_epochs = 50
+for epoch in range(num_epochs):
+    for inputs, targets in train_loader:
+        hidden = model.init_hidden(inputs.size(0))
+        outputs, hidden = model(inputs, hidden)
+        loss = criterion(outputs[:, -1, :], targets)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    if (epoch + 1) % 10 == 0:
+        print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}')
+
+# 使用训练好的模型进行逐步预测
+model.eval()
+test_inputs = dataset.x[:seq_length].unsqueeze(-1).unsqueeze(0)
+predicted = []
+hidden = model.init_hidden(1)
+for _ in range(len(dataset.x) - seq_length):
+    with torch.no_grad():
+        pred, hidden = model(test_inputs, hidden)
+        predicted.append(pred[:, -1, :].item())
+        test_inputs = torch.cat((test_inputs[:, 1:, :], pred[:, -1:, :]), dim=1)
+
+# 绘制预测结果
+import matplotlib.pyplot as plt
+
+plt.plot(dataset.x.numpy(), dataset.y.numpy(), label='True')
+plt.plot(dataset.x[seq_length:].numpy(), predicted, label='Predicted')
+plt.legend()
+plt.show()
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# 定义LSTM模型
+class SimpleLSTM(nn.Module):
+    def __init__(self, input_size=1, hidden_size=50, output_size=1, num_layers=1):
+        super(SimpleLSTM, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x, hidden):
+        out, hidden = self.lstm(x, hidden)
+        out = self.fc(out)
+        return out, hidden
+
+    def init_hidden(self, batch_size):
+        return (torch.zeros(self.num_layers, batch_size, self.hidden_size),
+                torch.zeros(self.num_layers, batch_size, self.hidden_size))
+
+
+# 虚拟数据集类
+class VirtualDataset:
+    def __init__(self, start=1, end=100, num_points=None):
+        self.start = start
+        self.end = end
+        if isinstance(num_points, int):
+            self.num_points = num_points
+        else:
+            self.num_points = (end - start + 1) * 10  # 相当于间隔是0.1
+        self.x = torch.linspace(self.start, self.end, self.num_points)
+        self.y = None
+
+    def sinx(self, w=0.01, noise_mu=0, noise_sigma=0.2, show_plt=False):
+        noise = torch.normal(noise_mu, noise_sigma, (self.num_points,))
+        self.y = torch.sin(w * self.x) + noise
+        if show_plt:
+            self.plot_xy(self.x.numpy(), self.y.numpy())
+
+    def plot_xy(self, x, y):
+        plt.plot(x, y)
+        plt.show()
+
+
+# 数据处理
+def prepare_data(x, y, seq_length=10):
+    x_seq, y_seq = [], []
+    for i in range(len(x) - seq_length):
+        x_seq.append(x[i:i + seq_length])
+        y_seq.append(y[i + seq_length])
+    x_seq = torch.stack(x_seq)
+    y_seq = torch.stack(y_seq)
+    return x_seq.unsqueeze(-1), y_seq.unsqueeze(-1)
+
+
+# 创建虚拟数据集
+dataset = VirtualDataset()
+dataset.sinx(show_plt=True)
+
+# 数据归一化
+x_min, x_max = dataset.x.min(), dataset.x.max()
+y_min, y_max = dataset.y.min(), dataset.y.max()
+dataset.x = (dataset.x - x_min) / (x_max - x_min)
+dataset.y = (dataset.y - y_min) / (y_max - y_min)
+
+# 准备训练数据
+seq_length = 20
+x_seq, y_seq = prepare_data(dataset.x, dataset.y, seq_length)
+
+# 创建DataLoader
+batch_size = 32
+train_dataset = TensorDataset(x_seq, y_seq)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+# 初始化模型、损失函数和优化器
+input_size = 1
+hidden_size = 50
+output_size = 1
+num_layers = 2
+model = SimpleLSTM(input_size, hidden_size, output_size, num_layers)
+criterion = nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# 训练模型
+num_epochs = 100
+for epoch in range(num_epochs):
+    for inputs, targets in train_loader:
+        hidden = model.init_hidden(inputs.size(0))
+        outputs, hidden = model(inputs, hidden)
+        loss = criterion(outputs[:, -1, :], targets)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    if (epoch + 1) % 10 == 0:
+        print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}')
+
+# 使用训练好的模型进行逐步预测
+model.eval()
+test_inputs = dataset.x[:seq_length].unsqueeze(-1).unsqueeze(0)
+predicted = []
+hidden = model.init_hidden(1)
+for _ in range(len(dataset.x) - seq_length):
+    with torch.no_grad():
+        pred, hidden = model(test_inputs, hidden)
+        predicted.append(pred[:, -1, :].item())
+        test_inputs = torch.cat((test_inputs[:, 1:, :], pred[:, -1:, :]), dim=1)
+
+# 反归一化预测结果
+predicted = np.array(predicted)
+y_max_np, y_min_np = y_max.item(), y_min.item()
+predicted = predicted * (y_max_np - y_min_np) + y_min_np
+
+# 绘制预测结果
+plt.plot(dataset.x.numpy() * (x_max.item() - x_min.item()) + x_min.item(), dataset.y.numpy() * (y_max.item() - y_min.item()) + y_min.item(), label='True')
+plt.plot(dataset.x[seq_length:].numpy() * (x_max.item() - x_min.item()) + x_min.item(), predicted, label='Predicted')
+plt.legend()
+plt.show()
+"""
+
 
 # 下面两个api因为复用性不强，将被弃用，请尽量不要使用
 # def train_net(X_train, y_train, data_iter=None, net=None, loss=None, optimizer=None, lr=0.001, num_epochs=1000,
