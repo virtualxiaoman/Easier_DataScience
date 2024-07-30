@@ -196,6 +196,7 @@ class NetTrainer:
 
     # [主函数]训练模型
     def train_net(self):
+        print("[train_net]开始训练模型")
         self.net.train()
         for epoch in range(self.epochs):
             loss_sum = 0.0
