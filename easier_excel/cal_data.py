@@ -86,7 +86,7 @@ class FeatureTransform(CalData):
         self.new_features = None  # 新特征
 
     # 特征选择
-    def select(self, target_name=None, feature_name=None, method="variance", **kwargs):
+    def select(self, target_name=None, feature_name=None, method="pca", **kwargs):
         """
         [Tips]:
             1.方法依次为：低方差特征排除、单变量特征选择、递归特征消除、随机森林、主成分分析、线性判别分析。
@@ -191,7 +191,7 @@ class FeatureTransform(CalData):
         return df
 
     # 特征生成
-    def generate(self, target_name=None, feature_name=None, method="variance", **kwargs):
+    def generate(self, target_name=None, feature_name=None, method="poly", **kwargs):
         """
         [Tips]:
             1.方法依次为：多项式特征转换
@@ -1275,8 +1275,171 @@ class NaiveBayes(CalData):
         ToMd.df_to_md(pd.DataFrame(conf_matrix, index=labels, columns=labels), md_flag, md_index=True)
 
 
-# 交叉验证
+# 交叉验证(超参数优化代码在注释里)
 class CrossValidation(CalData):
+    """
+    该cv暂不支持搜索最优超参数，你可以使用以下代码：
+    # 1. 单步搜索
+        # 超参数优化-网格搜索
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import GridSearchCV
+        from sklearn.datasets import load_iris
+        log_reg = LogisticRegression(max_iter=1000)
+        # Hyperparameters
+        param_grid = {'C': [0.001, 0.01, 0.1, 1, 10, 20, 50, 100],
+                      'penalty': ['l1', 'l2']}
+        n_folds = 5
+        estimator = GridSearchCV(log_reg, param_grid, cv=n_folds)
+        iris = load_iris()
+        X = iris.data
+        Y = iris.target
+        estimator.fit(X, Y)
+        print(estimator.best_estimator_)
+        print(estimator.best_params_)
+        print(estimator.best_score_)
+        # 超参数优化-随机搜索
+        from sklearn.model_selection import RandomizedSearchCV
+        from scipy.stats import randint as sp_randint
+        # Hyperparameters
+        param_grid = {'C': sp_randint(1, 100),
+                      'penalty': ['l1', 'l2']}
+        n_iter_search = 20
+        n_folds = 5
+        estimator = RandomizedSearchCV(log_reg, param_distributions=param_grid, n_iter=n_iter_search, cv=n_folds)
+        estimator.fit(X, Y)
+        print(estimator.best_estimator_)
+        print(estimator.best_params_)
+        print(estimator.best_score_)
+        # 超参数优化-查看cv的结果
+        import pandas as pd
+        df = pd.DataFrame(estimator.cv_results_)
+        print(df.head())
+        print(df[df['mean_test_score'] == df['mean_test_score'].max()])
+
+
+    # 2. 分步搜索
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from sklearn.model_selection import GridSearchCV
+        from sklearn.datasets import load_breast_cancer
+        from sklearn.ensemble import GradientBoostingClassifier
+
+        # 加载数据集
+        wbc_dataset = load_breast_cancer()
+        X = wbc_dataset.data
+        y = wbc_dataset.target
+
+        # 定义梯度提升分类器
+        gbc = GradientBoostingClassifier(random_state=42)
+
+        # 定义要搜索的超参数范围
+        LR_MIN = 0.001  # 学习率的最低值
+        LR_MAX = 5  # 学习率的最高值
+        NE_MIN = 100  # n_estimators最低值
+        NE_MAX = 500  # n_estimators最高值
+        LIN_NUM = 10  # linspace的num
+        param_grid = {
+            'learning_rate': np.linspace(LR_MIN, LR_MAX, LIN_NUM),
+            'n_estimators': np.linspace(NE_MIN, NE_MAX, LIN_NUM, dtype=int)
+        }
+
+        # 使用GridSearchCV进行超参数搜索
+        grid_search = GridSearchCV(estimator=gbc, param_grid=param_grid, cv=3, scoring='accuracy', n_jobs=-1, verbose=3)
+        grid_search.fit(X, y)
+
+        # 打印最佳参数
+        print("Best parameters found: ", grid_search.best_params_)  # {'learning_rate': 0.5564444444444444, 'n_estimators': 144}
+        # 还可以查看最佳的estimator：grid_search.best_estimator_
+
+        # 获取搜索结果
+        results = grid_search.cv_results_
+        # 提取learning_rate, n_estimators和mean_test_score
+        learning_rates = results['param_learning_rate'].data
+        n_estimators = results['param_n_estimators'].data
+        mean_test_scores = results['mean_test_score']
+
+        # 绘制散点图
+        plt.figure(figsize=(10, 6))
+        sc = plt.scatter(learning_rates, n_estimators, c=mean_test_scores, cmap='RdYlBu')
+        plt.colorbar(sc, label='Mean Test Accuracy')
+        plt.xlabel('Learning Rate')
+        plt.ylabel('Number of Estimators')
+        plt.title('Grid Search Results')
+        plt.show()
+
+        # 基于初步搜索结果，定义更精细的超参数范围
+        best_learning_rate = grid_search.best_params_['learning_rate']
+        best_n_estimators = grid_search.best_params_['n_estimators']
+        param_grid_2 = {
+            'learning_rate': np.linspace(max(LR_MIN, best_learning_rate - 0.1), min(LR_MAX, best_learning_rate + 0.1), LIN_NUM),
+            'n_estimators': np.arange(max(NE_MIN, best_n_estimators - 50), min(NE_MAX, best_n_estimators + 50), LIN_NUM, dtype=int)
+        }
+        grid_search_2 = GridSearchCV(estimator=gbc, param_grid=param_grid_2, cv=3, scoring='accuracy', n_jobs=-1, verbose=3)
+        grid_search_2.fit(X, y)
+        # 打印最终的最佳参数
+        print("Second round best parameters: ", grid_search_2.best_params_)  # {'learning_rate': 0.5675555555555555, 'n_estimators': 110}
+
+        # 获取搜索结果
+        results = grid_search_2.cv_results_
+        learning_rates = results['param_learning_rate'].data
+        n_estimators = results['param_n_estimators'].data
+        mean_test_scores = results['mean_test_score']
+
+        # 绘制散点图
+        plt.figure(figsize=(10, 6))
+        sc = plt.scatter(learning_rates, n_estimators, c=mean_test_scores, cmap='RdYlBu')
+        plt.colorbar(sc, label='Mean Test Accuracy')
+        plt.xlabel('Learning Rate')
+        plt.ylabel('Number of Estimators')
+        plt.title('Grid Search Results')
+        plt.show()
+
+
+    # 3. 贝叶斯优化(这个比较慢，估计是不能给那么大的范围，应该也是先粗后细)
+        from skopt import BayesSearchCV
+        from skopt.space import Real, Integer
+
+        import matplotlib.pyplot as plt
+        from sklearn.datasets import load_breast_cancer
+        from sklearn.ensemble import GradientBoostingClassifier
+
+        wbc_dataset = load_breast_cancer()
+        X = wbc_dataset.data
+        y = wbc_dataset.target
+        gbc = GradientBoostingClassifier(random_state=42)
+
+        # 定义要搜索的超参数范围
+        LR_MIN = 0.001  # 学习率的最低值
+        LR_MAX = 5  # 学习率的最高值
+        NE_MIN = 100  # n_estimators最低值
+        NE_MAX = 500  # n_estimators最高值
+        search_spaces = {
+            'learning_rate': Real(LR_MIN, LR_MAX, prior='log-uniform'),  # 对数均匀分布使得在对数尺度上每个点的概率是均匀的
+            'n_estimators': Integer(NE_MIN, NE_MAX)
+        }
+
+        # 使用BayesSearchCV进行贝叶斯优化
+        bayes_search = BayesSearchCV(estimator=gbc, search_spaces=search_spaces, n_iter=200, cv=3, scoring='accuracy', n_jobs=-1, verbose=3)
+        bayes_search.fit(X, y)
+        # 打印最佳参数
+        print("Best parameters found: ", bayes_search.best_params_)  # ('learning_rate', 0.5095603473323075), ('n_estimators', 168)
+
+        # 获取搜索结果
+        results = bayes_search.cv_results_
+        learning_rates = [result['learning_rate'] for result in bayes_search.cv_results_['params']]
+        n_estimators = [result['n_estimators'] for result in bayes_search.cv_results_['params']]
+        mean_test_scores = bayes_search.cv_results_['mean_test_score']
+
+        # 绘制散点图
+        plt.figure(figsize=(10, 6))
+        sc = plt.scatter(learning_rates, n_estimators, c=mean_test_scores, cmap='RdYlBu')
+        plt.colorbar(sc, label='Mean Test Accuracy')
+        plt.xlabel('Learning Rate')
+        plt.ylabel('Number of Estimators')
+        plt.title('Bayes Search Results')
+        plt.show()
+
+    """
     def __init__(self, df):
         super().__init__(df)
         self.cv = None
@@ -1641,6 +1804,129 @@ class Cluster(CalData):
             plt.show()
         plt.close()
 
+
+# 流水线
+# 1. 并联流水线(自己手动确定各个流水线的具体路径)
+"""
+from sklearn.datasets import load_iris
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn import svm
+from sklearn import tree
+from sklearn.pipeline import Pipeline
+
+iris = load_iris()
+X_train, X_test, y_train, y_test = train_test_split(iris.data, iris.target, test_size=0.2, random_state=42)
+
+pipe_svm = Pipeline([('ss1', StandardScaler()),
+                     ('pca', PCA(n_components=2)),
+                     ('svm', svm.SVC(random_state=42))])
+pipe_knn = Pipeline([('ss2', StandardScaler()),
+                     ('knn', KNeighborsClassifier(n_neighbors=6, metric='euclidean'))])
+pipe_dt = Pipeline([('ss3', StandardScaler()),
+                    ('minmax', MinMaxScaler()),
+                    ('dt', tree.DecisionTreeClassifier(random_state=42))])
+pipe_rf = Pipeline([('ss4', StandardScaler()),
+                    ('pca', PCA(n_components=2)),
+                    ('rf', RandomForestClassifier(n_estimators=100))])
+
+pipe_dic = {0: 'K Nearest Neighbours', 1: 'Decision Tree', 2: 'Random Forest', 3: 'Support Vector Machines'}
+pipelines = [pipe_knn, pipe_dt, pipe_rf, pipe_svm]
+
+for pipe in pipelines:
+    pipe.fit(X_train, y_train)
+for idx, val in enumerate(pipelines):
+    print('%s pipeline test accuracy: %.2f' % (pipe_dic[idx], val.score(X_test, y_test)))
+"""
+# 2. 并联流水线(使用itertools将预设的组合进行遍历)
+"""
+import itertools
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import accuracy_score
+
+iris = load_iris()
+X_train, X_test, y_train, y_test = train_test_split(iris.data, iris.target, test_size=0.2, random_state=42)
+
+scalers = [StandardScaler(), MinMaxScaler()]
+classifiers = [RandomForestClassifier(), DecisionTreeClassifier(), KNeighborsClassifier()]
+combinations = list(itertools.product(scalers, classifiers))  # 生成所有可能的组合
+
+# 创建Pipeline对象列表
+pipelines = []
+for scaler, classifier in combinations:
+    pipeline = Pipeline([
+        ('scaler', scaler),
+        ('classifier', classifier)
+    ])
+    pipelines.append(pipeline)
+
+# 进行模型评估
+best_accuracy = 0
+best_pipeline = None
+
+for pipeline in pipelines:
+    pipeline.fit(X_train, y_train)
+    y_pred = pipeline.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"{pipeline.steps}: Accuracy = {accuracy:.4f}")
+    if accuracy > best_accuracy:
+        best_accuracy = accuracy
+        best_pipeline = pipeline
+
+print(f"\nBest pipeline: {best_pipeline.steps}")
+print(f"Best accuracy: {best_accuracy:.4f}")
+"""
+# 3. 流水线与网格搜索结合
+"""
+# 定义参数网格
+param_grid = [
+    {
+        'scaler': [StandardScaler()],
+        'classifier': [RandomForestClassifier()],
+        'classifier__n_estimators': [50, 100, 150]
+    },
+    {
+        'scaler': [MinMaxScaler()],
+        'classifier': [DecisionTreeClassifier()],
+        'classifier__max_depth': [None, 10, 20]
+    },
+    {
+        'scaler': [StandardScaler()],
+        'classifier': [KNeighborsClassifier()],
+        'classifier__n_neighbors': [3, 5, 7]
+    }
+]
+
+# 创建Pipeline
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),  # 占位符
+    ('classifier', RandomForestClassifier())  # 占位符
+])
+
+# 进行网格搜索  Fitting 3 folds for each of 9 candidates, totalling 27 fits
+grid_search = GridSearchCV(pipeline, param_grid, cv=3, n_jobs=-1, verbose=2)
+grid_search.fit(X_train, y_train)
+
+# 输出最佳参数
+print("Best parameters found: ", grid_search.best_params_)
+print("Best cross-validation accuracy: {:.4f}".format(grid_search.best_score_))
+
+# 在测试集上评估最佳模型
+best_model = grid_search.best_estimator_
+y_pred = best_model.predict(X_test)
+accuracy = accuracy_score(y_test, y_pred)
+print("Test set accuracy: {:.4f}".format(accuracy))
+"""
 
 # 以下是一些废弃的函数，请不要使用
 # def cal_linear(X, y, use="sklearn", use_bias=True):

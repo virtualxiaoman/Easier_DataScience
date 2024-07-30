@@ -2,7 +2,7 @@ import sympy as sp
 import numpy as np
 from scipy import integrate
 
-from easier_excel.Colorful_Console import ColoredText as CT
+from easier_tools.Colorful_Console import ColoredText as CT
 
 
 def math_integral(x=None, fx=None, a=None, b=None):
@@ -102,3 +102,30 @@ def value_integral2(fxy=None, x_lower=-np.inf, x_upper=np.inf, y_lower=-np.inf, 
         return result
 
 
+# 求解一重积分的最小值
+"""
+import numpy as np
+from scipy.optimize import minimize
+from scipy.integrate import quad
+
+# 定义被积函数
+def integrand(x):
+    return x**2 + 2*x
+
+# 定义目标函数：计算定积分并返回
+def objective_function(bounds):
+    a, b = bounds
+    integral_value, _ = quad(integrand, a, b)
+    return integral_value
+
+# 初始猜测值
+initial_guess = np.array([0, 1])
+
+# 调用minimize函数
+result = minimize(objective_function, initial_guess, bounds=[(-10, 10), (-10, 10)])
+
+# 打印结果
+print("优化结果:", result)
+print("最优区间:", result.x)
+print("目标函数值:", result.fun)
+"""

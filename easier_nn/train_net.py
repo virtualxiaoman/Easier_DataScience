@@ -799,6 +799,127 @@ plt.legend()
 plt.show()
 """
 
+# bert可以参考下面的代码
+"""
+import torch
+from transformers import BertTokenizer, BertModel, BertForSequenceClassification
+
+# 加载预训练模型
+tokenizer = BertTokenizer.from_pretrained('../HF_model/google-bert/bert-base-chinese')
+model = BertModel.from_pretrained('../HF_model/google-bert/bert-base-chinese')
+chat = BertForSequenceClassification.from_pretrained('../HF_model/google-bert/bert-base-chinese')  # https://www.cnblogs.com/zhangxianrong/p/15066981.html
+
+def text2embedding(text):
+    # 对文本进行tokenize
+    inputs = tokenizer(text, return_tensors="pt")
+    # 获取模型输出
+    with torch.no_grad():
+        outputs = model(**inputs)
+    # 获取最后一层的隐藏状态
+    last_hidden_states = outputs.last_hidden_state
+    print(last_hidden_states.shape)
+    # # 获取句子的embedding (这里取[CLS] token的embedding)
+    # sentence_embedding = last_hidden_states[:, 0, :]
+    # # 获取所有token的平均embedding
+    # sentence_embedding = torch.mean(last_hidden_states, dim=1)
+    # 取所有token的平均值
+    sentence_embedding = outputs.last_hidden_state.mean(dim=1)
+    return sentence_embedding
+
+text1 = "I like apples."
+text2 = "The weather is cold."
+
+# 通过模型获取文本的embedding，然后计算余弦相似度
+embedding1 = text2embedding(text1)
+embedding2 = text2embedding(text2)
+similarity = torch.nn.functional.cosine_similarity(embedding1, embedding2)
+print(similarity.item())
+# 相似度太高的问题可以参考：
+# https://github.com/terrifyzhao/bert-utils/issues/70  里提及的：
+# https://spaces.ac.cn/archives/8541
+# https://www.cnblogs.com/shona/p/12021304.html#l1
+
+def compute_similarity(text1, text2):
+    embedding1 = text2embedding(text1)
+    embedding2 = text2embedding(text2)
+    similarity = torch.nn.functional.cosine_similarity(embedding1, embedding2)
+    return similarity.item()
+# # 例子1：完全不同的主题
+# text1 = "The cat is sleeping on the mat."
+# text2 = "Photosynthesis is the process by which plants make their food."
+# similarity1 = compute_similarity(text1, text2)
+# print(f"Cosine Similarity between '{text1}' and '{text2}': {similarity1}")
+#
+# # 例子2：完全不同的内容
+# text1 = "The Eiffel Tower is in Paris."
+# text2 = "Quantum mechanics is a fundamental theory in physics."
+# similarity2 = compute_similarity(text1, text2)
+# print(f"Cosine Similarity between '{text1}' and '{text2}': {similarity2}")
+#
+# # 例子3：短语之间的相似性
+# text1 = "I enjoy playing soccer."
+# text2 = "Soccer is a popular sport."
+# similarity3 = compute_similarity(text1, text2)
+# print(f"Cosine Similarity between '{text1}' and '{text2}': {similarity3}")
+#
+# # 例子4：完全无关的内容
+# text1 = "How to cook spaghetti?"
+# text2 = "The theory of relativity."
+# similarity4 = compute_similarity(text1, text2)
+# print(f"Cosine Similarity between '{text1}' and '{text2}': {similarity4}")
+
+def predict(text, tokenizer, model):
+    inputs = tokenizer(text, return_tensors="pt")
+    outputs = model(**inputs)
+    return outputs
+
+text = "我要玩碧蓝档案"
+predictions = predict(text, tokenizer, chat)
+print(predictions)
+
+# def predict_masked_word(text):
+#     # 将文本中的[MASK]替换为BERT的[MASK]标记
+#     input_text = text.replace('[MASK]', tokenizer.mask_token)
+#
+#     # 对文本进行tokenize
+#     inputs = tokenizer(input_text, return_tensors="pt")
+#
+#     # 获取模型输出
+#     with torch.no_grad():
+#         outputs = model(**inputs)
+#
+#     # 获取预测的logits
+#     predictions = outputs.last_hidden_state
+#
+#     # 获取[MASK] token的位置
+#     mask_token_index = torch.where(inputs.input_ids == tokenizer.mask_token_id)[1]
+#
+#     # 获取[MASK] token的logits
+#     mask_token_logits = predictions[0, mask_token_index, :]
+#
+#     # 获取每个词的概率
+#     top_k = 10
+#     top_k_indices = torch.topk(mask_token_logits, top_k, dim=-1).indices[0].tolist()
+#     top_k_probabilities = torch.nn.functional.softmax(mask_token_logits, dim=-1)[0, top_k_indices].tolist()
+#
+#     # 获取top_k词的预测结果
+#     predicted_tokens = tokenizer.convert_ids_to_tokens(top_k_indices)
+#
+#     result = {}
+#     for token, prob in zip(predicted_tokens, top_k_probabilities):
+#         result[token] = prob
+#
+#     return result
+#
+#
+# # 示例文本
+# text = "生活的真谛是[MASK]。"
+#
+# # 获取预测结果
+# predictions = predict_masked_word(text)
+# for word, prob in predictions.items():
+#     print(f"{word}: {prob:.3f}")
+"""
 
 # 下面两个api因为复用性不强，将被弃用，请尽量不要使用
 # def train_net(X_train, y_train, data_iter=None, net=None, loss=None, optimizer=None, lr=0.001, num_epochs=1000,
