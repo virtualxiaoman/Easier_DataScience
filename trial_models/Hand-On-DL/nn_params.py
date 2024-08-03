@@ -23,7 +23,7 @@ epoch = 10
 N1_w_list, N1_b_list, N3_w_list, N3_b_list = [], [], [], []
 ACC_list = []
 
-trainer = NetTrainer(X, y, net, loss_fn, optimizer, epochs=1, net_type="acc", batch_size=16, print_interval=1)
+trainer = NetTrainer(X, y, net, loss_fn, optimizer, epochs=1, eval_type="acc", batch_size=16, print_interval=1)
 for i in range(epoch):
     trainer.train_net()
     N1_w_list.append(trainer.net[1].weight.data.clone())

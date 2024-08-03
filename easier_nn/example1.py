@@ -30,7 +30,7 @@ net = ResNet(ResidualBlock, [2, 2, 2, 2], num_classes=10)  # ResNet18，需要�
 loss_fn = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
 
-trainer = NetTrainer(X, y, net, loss_fn, optimizer, epochs=2, net_type="acc", batch_size=16, target_reshape_1D=False,
+trainer = NetTrainer(X, y, net, loss_fn, optimizer, epochs=2, eval_type="acc", batch_size=16, target_reshape_1D=False,
                      print_interval=1, eval_during_training=False)
 trainer.view_parameters()
 trainer.train_net()

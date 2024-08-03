@@ -1,4 +1,5 @@
 import warnings
+import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -79,18 +80,21 @@ class NetTrainer:
         optimizer = optim.Adam(net.parameters(), lr=0.001)
 
         # 训练模型
-        trainer = NetTrainer(data, target, net, loss_fn, optimizer, epochs=50, net_type="acc")
+        trainer = NetTrainer(data, target, net, loss_fn, optimizer, epochs=50, eval_type="acc")
         trainer.train_net()
         trainer.evaluate_net()
 
         print(trainer.test_acc_list)
     """
-    def __init__(self, data, target, net, loss_fn, optimizer,   # 必要参数，数据与网络的基本信息
-                 test_size=0.2, batch_size=64, epochs=100,      # 可选参数，用于训练
-                 net_type="loss",                               # 比较重要的参数，用于选择训练的类型（与评估指标有关）
-                 eval_during_training=True,                     # 比较重要的参数，训练时是否进行评估（与显存有关）
-                 print_interval=20,                             # 可选参数，训练时的输出间隔
-                 device=None,                                   # 可选参数，设备选择
+    def __init__(self, data, target, net, loss_fn, optimizer,  # 必要参数，数据与网络的基本信息
+                 test_size=0.2, batch_size=64, epochs=100,  # 可选参数，用于训练
+                 eval_type="loss",  # 比较重要的参数，用于选择训练的类型（与评估指标有关）
+                 eval_during_training=True,  # 比较重要的参数，训练时是否进行评估（与显存有关）
+                 rnn_seq_len=None, rnn_hidden_size=None, rnn_input_size=None,
+                 # 可选参数，当net是RNN类型时，序列长度,隐藏层大小,输入维度
+                 # Bug：对RNN的train,test划分不太行，建议传入tuple
+                 print_interval=20,  # 可选参数，训练时的输出间隔
+                 device=None,  # 可选参数，设备选择
                  **kwargs):
         """
         初始化模型。
@@ -106,7 +110,7 @@ class NetTrainer:
         :param test_size: 测试集大小，支持浮点数或整数。该参数在data和target是tuple时无效
         :param batch_size: 批量大小
         :param epochs: 训练轮数
-        :param net_type: 模型类型，只可以是"loss"(回归-损失)或"acc"(分类-准确率)
+        :param eval_type: 模型类型，只可以是"loss"(回归-损失)或"acc"(分类-准确率)
         :param print_interval: 打印间隔，请注意train_loss_list等间隔也是这个
         :param eval_during_training: 训练时是否进行评估，当显存不够时，可以设置为False，等到训练结束之后再进行评估
           设置为False时，不会影响训练集上的Loss的输出，但是无法输出验证集上的loss、训练集与验证集上的acc
@@ -127,6 +131,7 @@ class NetTrainer:
         # 网络参数
         self.net = net.to(self.device)
         # self.net = torch.compile(self.net)  # RuntimeError: Windows not yet supported for torch.compile 哈哈哈！
+        self.net_type = "NN"  # 默认是前馈神经网络
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         # 训练参数
@@ -139,10 +144,17 @@ class NetTrainer:
         self.test_acc_list = []
         self.print_interval = print_interval  # 打印间隔
         # 使用loss还是acc参数
-        self.net_type = net_type
+        self.eval_type = eval_type
         # 训练时是否进行评估
         self.eval_during_training = eval_during_training
         self.original_dataset_to_device = False  # False表示数据还没有转移到设备上
+        # 是否是RNN类型
+        self.rnn_seq_len = rnn_seq_len
+        self.rnn_hidden_size = rnn_hidden_size
+        self.rnn_input_size = rnn_input_size
+        self.hidden = None
+        if self.rnn_seq_len and self.rnn_hidden_size:
+            self.net_type = "RNN"
         # 初始化
         self.init_loader()
 
@@ -169,6 +181,11 @@ class NetTrainer:
                 train_test_split(self.data, self.target, test_size=self.test_size)
             print(f"[init_loader]传入的是X, y，则按照test_size={self.test_size}划分训练集和测试集")
 
+        # if self.net_type == "RNN":
+        #     self.X_train, self.y_train = self._prepare_rnn_data(self.X_train, self.y_train)
+        #     self.X_test, self.y_test = self._prepare_rnn_data(self.X_test, self.y_test)
+        #     print(f"[init_loader]RNN数据准备完毕，seq_len={self.rnn_seq_len}, hidden_size={self.rnn_hidden_size}")
+
         # 创建DataLoaders
         self.train_loader = self.create_dataloader(self.X_train, self.y_train)
         self.test_loader = self.create_dataloader(self.X_test, self.y_test, train=False)
@@ -190,14 +207,20 @@ class NetTrainer:
         # print(target)
         dataset = TensorDataset(data, target)
         if train:
-            return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+            if self.net_type == "RNN":
+                return DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
+            else:
+                return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
         else:
             return DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
 
     # [主函数]训练模型
-    def train_net(self):
+    def train_net(self, hidden=None):
+        if hidden is not None:
+            self.hidden = hidden
         print("[train_net]开始训练模型")
         self.net.train()
+
         for epoch in range(self.epochs):
             loss_sum = 0.0
             for X, y in self.train_loader:
@@ -205,9 +228,17 @@ class NetTrainer:
                 X, y = X.to(self.device), y.to(self.device)
                 self.optimizer.zero_grad()
                 # 前向传播
-                outputs = self.net(X)
-                # print(X.shape, y.shape, outputs.shape)
-                loss = self.loss_fn(outputs, y)
+                if self.net_type == "RNN":
+                    if self.hidden is not None:
+                        self.hidden.detach_()
+                    #     print(self.hidden.shape)
+                    # print(X.shape, y.shape)
+                    outputs, self.hidden = self.net(X, self.hidden)
+                    loss = self.loss_fn(outputs.view(y.shape), y)
+                else:
+                    outputs = self.net(X)
+                    # print(X.shape, y.shape, outputs.shape)
+                    loss = self.loss_fn(outputs.view(y.shape), y)
                 # 反向传播
                 loss.backward()
                 # 更新参数
@@ -219,22 +250,22 @@ class NetTrainer:
                 torch.cuda.empty_cache()  # 释放显存
             loss_epoch = loss_sum / len(self.train_loader)
             if epoch % self.print_interval == 0:
-                if self.net_type == "loss":
+                if self.eval_type == "loss":
                     self.train_loss_list.append(loss_epoch)
                     self.test_loss_list.append(self.evaluate_net())
                     print(f'Epoch {epoch + 1}/{self.epochs}, Train Loss: {loss_epoch}, '
                           f'Test Loss: {self.test_loss_list[-1]}')
-                elif self.net_type == "acc":
+                elif self.eval_type == "acc":
                     self.train_acc_list.append(self.evaluate_net(eval_type="train"))
                     self.test_acc_list.append(self.evaluate_net())
                     print(f'Epoch {epoch + 1}/{self.epochs}, Train Loss: {loss_epoch}, '
                           f'Train Acc: {self.train_acc_list[-1]}, '
                           f'Test Acc: {self.test_acc_list[-1]}')
                 else:
-                    raise ValueError("net_type must be 'loss' or 'acc'")
+                    raise ValueError("eval_type must be 'loss' or 'acc'")
         self.eval_during_training = True  # 训练完成后，可以进行评估
 
-    # [主函数]评估模型
+    # [主函数]评估模型(暂不支持RNN的评估)
     def evaluate_net(self, eval_type="test", delete_train=False):
         """
         评估模型
@@ -251,15 +282,24 @@ class NetTrainer:
             torch.cuda.empty_cache()
         self.net.eval()
         with torch.no_grad():  # 在评估时禁用梯度计算，节省内存
-            if self.net_type == "loss":
-                if eval_type == "test":
-                    loss = self.loss_fn(self.net(self.X_test), self.y_test).item()
+            if self.eval_type == "loss":
+                if self.net_type == "RNN":
+                    if eval_type == "test":
+                        output = self.evaluate_rnn_loss(self.net, self.X_test[0], self.hidden[:, -1], len(self.y_test))
+                        loss = self.loss_fn(output, self.y_test).item()
+                    else:
+                        # 事实上一般不调用这个，因为训练集的loss在训练时已经计算了
+                        output = self.evaluate_rnn_loss(self.net, self.X_train[0], self.hidden[:, -1], len(self.y_train))
+                        loss = self.loss_fn(output, self.y_train).item()
                 else:
-                    # 事实上一般不调用这个，因为训练集的loss在训练时已经计算了
-                    loss = self.loss_fn(self.net(self.X_train), self.y_train).item()
+                    if eval_type == "test":
+                        loss = self.loss_fn(self.net(self.X_test), self.y_test).item()
+                    else:
+                        # 事实上一般不调用这个，因为训练集的loss在训练时已经计算了
+                        loss = self.loss_fn(self.net(self.X_train), self.y_train).item()
                 self.net.train()
                 return loss
-            elif self.net_type == "acc":
+            elif self.eval_type == "acc":
                 if eval_type == "test":
                     predictions = torch.argmax(self.net(self.X_test), dim=1).type(self.y_test.dtype)
                     correct = (predictions == self.y_test).sum().item()
@@ -311,6 +351,25 @@ class NetTrainer:
         #     k = k + l
         # print("总参数数量和：" + str(k))
 
+    # [子函数]评估RNN的loss
+    def evaluate_rnn_loss(self, gru, x, hidden, pred_steps):
+        pred = []
+        # print(type(x))
+        inp = x.view(-1, self.rnn_input_size).to(self.device)
+        for i in range(pred_steps):
+            gru_pred, hidden = gru(inp, hidden)
+            pred.append(gru_pred.detach())
+            inp = gru_pred
+        return torch.concat(pred).reshape(-1)
+    # # [子函数]准备RNN数据
+    # def _prepare_rnn_data(self, data, target):
+    #     seq_len = self.rnn_seq_len
+    #     data_len = len(data)
+    #     num_sequences = data_len // (seq_len + 1) * (seq_len + 1)
+    #     data = np.array(data[:num_sequences]).reshape((-1, seq_len + 1, 1))
+    #     target = np.array(target[:num_sequences]).reshape((-1, seq_len + 1, 1))
+    #     return data[:, :seq_len], data[:, 1:seq_len + 1]
+
     # 将df转换为tensor，并保持数据类型的一致性
     @staticmethod
     def _dataframe_to_tensor(df, float_dtype=torch.float16, int_dtype=torch.int64):
@@ -326,6 +385,8 @@ class NetTrainer:
         if not isinstance(df, pd.DataFrame):
             if isinstance(df, torch.Tensor):
                 return df
+            elif isinstance(df, np.ndarray):
+                return torch.tensor(df)
             else:
                 raise ValueError("既不是dataframe又不是tensor")
         # 检查df中的数据类型
@@ -356,7 +417,7 @@ class NetTrainer:
         :param y: torch.Tensor
         :return: torch.Tensor
         """
-        if self.target_reshape_1D and self.net_type == "acc" and y.dim() > 1:
+        if self.target_reshape_1D and self.eval_type == "acc" and y.dim() > 1:
             warnings.warn(f"[_target_reshape_1D]请注意：y的维度为{y.dim()}: {y.shape}，将被自动转换为1维\n"
                           "如需保持原有维度，请设置 target_reshape_1D=False ")
             return y.view(-1)

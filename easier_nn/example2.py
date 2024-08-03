@@ -23,6 +23,6 @@ loss = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
 
 trainer = NetTrainer((fm.X_train, fm.X_test), (fm.y_train, fm.y_test), net, loss, optimizer,
-                     batch_size=batch_size, epochs=num_epochs, net_type="acc", print_interval=1)
+                     batch_size=batch_size, epochs=num_epochs, eval_type="acc", print_interval=1)
 trainer.train_net()
 
