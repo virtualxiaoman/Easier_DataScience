@@ -229,7 +229,7 @@ class NetTrainer:
     def train_net(self, hidden=None):
         if hidden is not None:
             self.hidden = hidden
-        print("[train_net]开始训练模型")
+        print(f"[train_net]开始训练模型，总共epochs={self.epochs}，当前设备为{self.device}，网络类型为{self.net_type}")
         self.net.train()
 
         for epoch in range(self.epochs):
@@ -247,11 +247,13 @@ class NetTrainer:
                     # print(X.shape, y.shape)
                     # print("----------上面是TRAIN的hidden, X, y的shape---------")
                     outputs, self.hidden = self.net(X, self.hidden)
-                    loss = self.loss_fn(outputs.view(y.shape), y)
+                    loss = self.loss_fn(outputs, y)
                 else:
+                    # print(X.shape, y.shape)
+                    # print("----------上面是TRAIN的hidden, X, y的shape---------")
                     outputs = self.net(X)
                     # print(X.shape, y.shape, outputs.shape)
-                    loss = self.loss_fn(outputs.view(y.shape), y)
+                    loss = self.loss_fn(outputs, y)
                 # 反向传播
                 loss.backward()
                 # 更新参数
@@ -320,15 +322,17 @@ class NetTrainer:
             elif self.eval_type == "acc":
                 if self.net_type == "RNN":
                     if eval_type == "test":
-                        predictions = torch.argmax(self.net(self.X_test, self.hidden[:, -1]), dim=1).type(self.y_test.dtype)
-                        correct = (predictions == self.y_test).sum().item()
-                        n = self.y_test.numel()
-                        acc = correct / n
+                        acc = self._cal_rnn_acc(self.net, self.X_test, self.y_test)
+                        # predictions = torch.argmax(self.net(self.X_test, self.hidden), dim=1).type(self.y_test.dtype)
+                        # correct = (predictions == self.y_test).sum().item()
+                        # n = self.y_test.numel()
+                        # acc = correct / n
                     else:
-                        predictions = torch.argmax(self.net(self.X_train, self.hidden[:, 0]), dim=1).type(self.y_train.dtype)
-                        correct = (predictions == self.y_train).sum().item()
-                        n = self.y_train.numel()
-                        acc = correct / n
+                        acc = self._cal_rnn_acc(self.net, self.X_train, self.y_train)
+                        # predictions = torch.argmax(self.net(self.X_train, self.hidden), dim=1).type(self.y_train.dtype)
+                        # correct = (predictions == self.y_train).sum().item()
+                        # n = self.y_train.numel()
+                        # acc = correct / n
                 else:
                     if eval_type == "test":
                         predictions = torch.argmax(self.net(self.X_test), dim=1).type(self.y_test.dtype)
@@ -398,6 +402,30 @@ class NetTrainer:
             pred_list.append(pred.detach())
             inp = pred
         return torch.cat(pred_list, dim=0).view(-1)
+
+    # [子函数]评估RNN的acc
+    def _cal_rnn_acc(self, net, x, y):
+        net.eval()
+        correct = 0
+        total = 0
+
+        with torch.no_grad():
+            for i in range(0, len(x), self.batch_size):
+                X_batch = x[i:i + self.batch_size]
+                y_batch = y[i:i + self.batch_size]
+
+                if len(X_batch) != self.batch_size:
+                    break
+
+                hidden = self.hidden.detach()
+                outputs, _ = net(X_batch, hidden)
+                predictions = torch.argmax(outputs, dim=1)
+
+                correct += (predictions == y_batch).sum().item()
+                total += y_batch.size(0)
+
+        accuracy = correct / total
+        return accuracy
 
     # # [子函数]准备RNN数据
     # def _prepare_rnn_data(self, data, target):
