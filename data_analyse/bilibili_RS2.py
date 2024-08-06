@@ -49,7 +49,7 @@ df_origin = df_origin[df_origin['like_rate'] <= 1]   # 顺带删除缺失值
 df_origin['u_score'] = df_origin['u_score'].apply(lambda x: 1 if x >= 3 else 0)
 
 # 只保留是数值的列
-desc_df_o = read_data.desc_df(df_origin.select_dtypes(include=['number']).copy())
+desc_df_o = read_data.DescDF(df_origin.select_dtypes(include=['number']).copy())
 print(desc_df_o.shape)  # (1111, 25)
 print(df_origin['u_score'].value_counts())
 
@@ -68,12 +68,12 @@ print(desc_df_o.shape)  # (984, 25)
 print(df_origin.shape)  # (1111, 29)
 
 df_deleteoutlier = desc_df_o.df.copy()
-# temp = read_data.desc_df(df_deleteoutlier)
+# temp = read_data.DescDF(df_deleteoutlier)
 # temp.update_desc_df()
 # print(temp.shape)  # (984, 25)
 # print(temp.missing_info)
 print(df_deleteoutlier['u_score'].value_counts())  # 0: 895, 1: 89
-desc_df_d = read_data.desc_df(df_deleteoutlier)
+desc_df_d = read_data.DescDF(df_deleteoutlier)
 desc_df_d.transform_df(target='u_score')
 df_deleteoutlier_minmax = desc_df_d.minmax_df  # 归一化
 df_deleteoutlier_minmax['u_score'] = df_deleteoutlier['u_score'].values
@@ -81,12 +81,12 @@ df_deleteoutlier_zscore = desc_df_d.zscore_df  # 标准化
 df_deleteoutlier_zscore['u_score'] = df_deleteoutlier['u_score'].values
 df_deleteoutlier_smote = desc_df_d.smote_df  # SMOTE
 
-# temp = read_data.desc_df(df_deleteoutlier_minmax)
+# temp = read_data.DescDF(df_deleteoutlier_minmax)
 # temp.update_desc_df()
 # print(temp.shape)  # (984, 25)
 # print(temp.missing_info)
 # print(df_deleteoutlier_minmax['u_score'].value_counts())  # 0: 770, 1: 83
-# temp = read_data.desc_df(df_deleteoutlier_zscore)
+# temp = read_data.DescDF(df_deleteoutlier_zscore)
 # temp.update_desc_df()
 # print(temp.shape)  # (984, 25)
 # print(temp.missing_info)
@@ -258,7 +258,7 @@ train_dataset['u_score'] = y_train
 test_dataset = X_test.copy()
 test_dataset['u_score'] = y_test
 
-des_df = read_data.desc_df(train_dataset)
+des_df = read_data.DescDF(train_dataset)
 des_df.transform_df(target='u_score')
 train_dataset_smote = des_df.smote_df
 train_dataset_adasyn = des_df.adasyn_df

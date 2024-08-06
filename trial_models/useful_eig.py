@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from easier_excel.draw_data import draw_scatter, plot_xy
-from easier_excel.read_data import desc_df
+from easier_excel.read_data import DescDF
 
 def show_transform(x, y, T, c, T_text='T'):
     """
@@ -157,8 +157,8 @@ eig_vecs = eig_vecs[:, idx]
 eig_vals = np.diag(eig_vals)
 df_val = pd.DataFrame(eig_vals)
 df_vec = pd.DataFrame(eig_vecs)
-dd_val = desc_df(df_val)
-dd_vec = desc_df(df_vec)
+dd_val = DescDF(df_val)
+dd_vec = DescDF(df_vec)
 dd_val.draw_heatmap(scale=False)
 dd_vec.draw_heatmap(scale=False)
 

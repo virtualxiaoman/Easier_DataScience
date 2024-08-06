@@ -462,7 +462,7 @@ def pair_feature_plot(df, kde_hist=True, diag=None, kind=None):  # todo 要在dr
     plt.close()
 
 
-class draw_df(DFUtils):
+class DrawDF(DFUtils):
     def __init__(self, df):
         """
         初始化

@@ -126,7 +126,49 @@ class LoadEmbedding:
             ans[word] = self.word_not_found
         return ans
 
-# NLP预处理(英文)
+    # 载入glove的词向量
+    def glove_load_embedding(self, path="../model/official/glove_embedding/glove.6B.50d.txt"):
+        """
+        载入glove的词向量
+        :param path: 词向量文件路径
+        :return: 词向量字典
+        """
+        self.key_vector = KeyedVectors.load_word2vec_format(path, binary=False, no_header=True)
+        print("词向量矩阵的形状:", self.key_vector.vectors.shape)
+
+    def glove_search_vector(self, words=('test', 'ai'), path="../model/official/glove_embedding/glove.6B.50d.txt"):
+        """
+        查询某些词的词向量
+        :param words: 待查询的词或列表
+        :param path: 词向量文件路径
+        :return: dict, key是词，value是词向量
+        """
+        # 如果words是字符串，说明只有一个词，转换为列表
+        if isinstance(words, str):
+            words = [words]
+
+        ans = {}
+        if self.key_vector is not None:
+            for word in words:
+                ans[word] = self.key_vector[word]
+                words.remove(word)
+        else:
+            with open(path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    parts = line.strip().split()
+                    word = parts[0]
+                    if word in words:
+                        embedding = np.array(parts[1:], dtype=np.float32)
+                        ans[word] = embedding
+                        words.remove(word)
+                    if not words:
+                        break
+        for word in words:
+            ans[word] = self.word_not_found
+
+        return ans
+
+# NLP预处理(英文)，暂时没有完善
 class NLP_EN:
     def __init__(self, text_list, label_list=None):
         """

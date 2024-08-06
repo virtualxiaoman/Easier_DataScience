@@ -48,7 +48,7 @@ df_origin['u_score'] = df_origin['u_score'].astype('int')
 df_origin['up_follow'] = df_origin['up_follow'].astype('int')
 df_origin['tid'] = df_origin['tid'].astype('int')
 
-desc_df = read_data.desc_df(df_origin)
+desc_df = read_data.DescDF(df_origin)
 desc_df.draw_hist()
 exit(11)
 print(CT("----------统计----------").pink())

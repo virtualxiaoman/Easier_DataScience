@@ -43,7 +43,7 @@ ToMd.text_to_md(md_text="1. 数据信息", md_flag=True, md_color="pink", md_h=1
 u_score_counts = df_origin['u_score'].value_counts().sort_index()
 print(u_score_counts)
 
-desc_df = read_data.desc_df(df_origin)
+desc_df = read_data.DescDF(df_origin)
 desc_df.show_df(head_n=0, tail_n=0, show_columns=False, show_dtypes=False, md_flag=True)
 desc_df.describe_df(stats_detailed=False, md_flag=True)
 
@@ -53,7 +53,7 @@ ToMd.text_to_md(md_text="2. 处理异常值与缺失值", md_flag=True, md_color
 print(CT("like_rate>1的行：").red())
 print(df_origin[df_origin['like_rate'] > 1])
 df_origin = df_origin[df_origin['like_rate'] <= 1]  # 这个顺带把缺失值的行也删了
-desc_df = read_data.desc_df(df_origin)
+desc_df = read_data.DescDF(df_origin)
 desc_df.describe_df(stats_detailed=False)  # 发现已经没有缺失值了
 desc_df.process_outlier(method='IQR', show_info=True, process_type='ignore', md_flag=True)  # 暂不处理异常值，因为这里都是真实数据
 desc_df.show_df(head_n=0, tail_n=0, show_columns=False, show_dtypes=False, md_flag=True)  # 该行只是为了写入到md文件
@@ -77,10 +77,10 @@ feature_guess = ['view_percent', 'view', 'dm', 'reply', 'time', 'like', 'coin', 
 # 猜想重要特征feature_important是下面这些
 feature_important = ['dm_rate',  'reply_rate', 'like_rate', 'coin_rate', 'fav_rate', 'share_rate',
                      'up_follow', 'view_percent']
-# desc_df = read_data.desc_df(df_num[feature_all])
-# desc_df.draw_heatmap(scale=True, v_minmax=(-5, 5))  # 画热力图，浅略查看特征之间的相关性
-# desc_df = read_data.desc_df(df_num[feature_guess])
-# desc_df.draw_heatmap(scale=True, v_minmax=(-5, 5))  # 画热力图，浅略查看特征之间的相关性
+# DescDF = read_data.DescDF(df_num[feature_all])
+# DescDF.draw_heatmap(scale=True, v_minmax=(-5, 5))  # 画热力图，浅略查看特征之间的相关性
+# DescDF = read_data.DescDF(df_num[feature_guess])
+# DescDF.draw_heatmap(scale=True, v_minmax=(-5, 5))  # 画热力图，浅略查看特征之间的相关性
 
 print(CT("----------数据处理(回归)[尝试线性回归]----------").pink())
 ToMd.text_to_md(md_text="3.1 尝试一些属性(feature-guess)进行线性回归", md_flag=True, md_color="blue", md_h=2)
@@ -361,11 +361,11 @@ with open(f"{model_path}/SVM_model_feature_important_after_Smote.pkl", 'wb') as 
 
 
 exit(111)
-draw_df = draw_data.draw_df(df_num)
-# draw_df.draw_corr(v_minmax=(-1, 1))
+draw_df = draw_data.DrawDF(df_num)
+# DrawDF.draw_corr(v_minmax=(-1, 1))
 # 在df_num中去掉u_like, u_coin, u_fav这三列，因为这三列是计算u_score的依据
 # feature_name_main = [col for col in df_num.columns if col not in ['u_like', 'u_coin', 'u_fav', 'u_score']]
-# draw_df.draw_feature_importance(target_name='u_score', feature_name=feature_name_main,
+# DrawDF.draw_feature_importance(target_name='u_score', feature_name=feature_name_main,
 #                                 descending_draw=True, print_top=10)
 draw_df.draw_all_scatter(target_name='u_score', save_path='output/bilibili_RS/scatter_all')
 

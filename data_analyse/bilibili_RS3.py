@@ -103,7 +103,7 @@ X_train.reset_index(drop=True, inplace=True)  # 重置索引，确保索引对�
 y_train.reset_index(drop=True, inplace=True)
 dataset_df = pd.concat([X_train, y_train], axis=1)
 
-desc_df = read_data.desc_df(dataset_df)
+desc_df = read_data.DescDF(dataset_df)
 desc_df.transform_df(target='u_score')
 dataset_smotetomek = desc_df.smotetomek_df
 X_train = dataset_smotetomek.drop(['u_score'], axis=1)

@@ -25,6 +25,7 @@ from easier_tools.to_md import ToMd
 
 ToMd = ToMd()
 
+
 def set_pd_option(max_show=True, float_type=True, decimal_places=2, reset_all=False, reset_display=False):
     """
     该设置为全局设置。
@@ -62,13 +63,16 @@ def set_pd_option(max_show=True, float_type=True, decimal_places=2, reset_all=Fa
     if reset_display:
         pd.reset_option("^display")  # ^表示以某个字符开始，在这里表示以display开始全部重置
 
+
 def read_df(path):
     """
-    读入数据，支持.csv和.xlsx
-    :param path:路径。依据路径结尾的类型来判断是csv还是xlsx
+    读入数据，支持.csv, .tsv, .xls, .xlsx, .sav格式
+    :param path:路径。依据路径结尾的类型来判断读取的数据类型
     """
     if path.endswith('.csv'):
         df = pd.read_csv(path)
+    elif path.endswith('.tsv'):
+        df = pd.read_csv(path, sep='\t')
     elif path.endswith(('.xls', '.xlsx')):
         df = pd.read_excel(path)
     elif path.endswith('.sav'):
@@ -79,7 +83,7 @@ def read_df(path):
 
 
 # 数据描述与预处理
-class desc_df(DFUtils):
+class DescDF(DFUtils):
     def __init__(self, df):
         """
         初始化
@@ -148,7 +152,7 @@ class desc_df(DFUtils):
         """
         输出数据的基本统计信息，以及检测缺失值。
         [使用方法]:
-            desc = read_data.desc_df(df)
+            desc = read_data.DescDF(df)
             desc.describe_df(show_stats=True, stats_T=True, stats_detailed=False, show_nan=True, show_nan_heatmap=False)
         [Tips]:
             1.如果要把缺失值比例还原成数值，比如3.7%变成0.037，可以使用下面这行代码：
@@ -267,7 +271,7 @@ class desc_df(DFUtils):
         [Warning]:
             该操作会直接在原数据上进行修改，也就是修改self.df
         [使用方法]:
-            desc = read_data.desc_df(df)
+            desc = read_data.DescDF(df)
             desc.fill_missing_values(fill_type=114514)  # 实际填充的时候可别逸一时误一世了
         [Tips]:
             1.对于数值型数据，目前支持的填充类型有：
@@ -666,7 +670,7 @@ class time_data:
         plt.show()
         sns.lineplot(data=df, x="month", y="UNRATENSA", hue="year")
         plt.show()
-        desc = read_data.desc_df(df)
+        desc = read_data.DescDF(df)
         desc.describe_df(stats_detailed=False)
         print(desc.missing_info)
         import statsmodels.api as sm
