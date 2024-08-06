@@ -40,7 +40,7 @@ optimizer = torch.optim.Adam(net.parameters(), lr=0.0001)
 # net = train_net(X_train=train_data, y_train=train_target, data_iter=train_iter, net=net,
 #                 loss=loss, optimizer=optimizer, num_epochs=300, show_interval=10, hidden=hidden)
 # torch.save(net, '../model/test/rnn_predict_net_simple_rnn.pth')
-net = torch.load('../model/test/rnn_predict_net_simple_rnn.pth')
+net = torch.load('../../model/test/rnn_predict_net_simple_rnn.pth')
 net.eval()
 print(net)
 test_data = vd.x[seq_len + 1:seq_len + batch_size + 1]
