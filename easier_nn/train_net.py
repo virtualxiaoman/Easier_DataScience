@@ -164,7 +164,7 @@ class NetTrainer:
         self.rnn_hidden_size = rnn_hidden_size  # 同上
         self.rnn_input_size = rnn_input_size  # 在计算损失时需要用到
         self.hidden = None
-        if self.rnn_seq_len and self.rnn_hidden_size and self.rnn_input_size:
+        if self.rnn_input_size:
             self.net_type = "RNN"
         # 初始化
         self.init_loader()

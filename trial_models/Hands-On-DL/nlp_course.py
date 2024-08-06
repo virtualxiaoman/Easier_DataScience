@@ -4,9 +4,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
-from gensim.models import KeyedVectors
 
 from easier_excel.read_data import read_df, set_pd_option
 from easier_nn.train_net import NetTrainer
@@ -67,39 +65,10 @@ load_glove.load_glove_vectors()
 # 转小写是因为GloVe词向量是小写的
 X_embedding = [load_glove.sentence_to_matrix(sentence.lower()) for sentence in X]
 
-
 for i in range(8):
     print(f"Sentence {i}: {np.array(X_embedding[i]).shape}")
 
 print(f"Total sentences: {len(X_embedding)}")
-
-# # 将X: str转化为X: tuple，其中元组的每个元素是一个词，并且转小写
-# # X = [list(x.lower().split()) for x in X]
-# X = [x.lower().split() for x in X]
-# print(X[:5])
-# # 将文本转换为词向量
-# key_vector = KeyedVectors.load_word2vec_format(path, binary=False, no_header=True)
-# ans = {}
-# for word in words:
-#     ans[word] = self.key_vector[word]
-#     words.remove(word)
-# """
-#   if self.key_vector is not None:
-#         for word in words:
-#             if word in self.key_vector:
-#                 ans[word] = self.key_vector[word]
-#             else:
-#                 ans[word] = self.word_not_found
-# """
-# # embedding = LoadEmbedding()
-# # embedding.glove_load_embedding(path="../../model/official/glove/glove.6B.50d.txt")
-# # X1_embedding = embedding.glove_search_vector(X[0], path="../../model/official/glove/glove.6B.50d.txt")
-# for k, v in X1_embedding.items():
-#     # 如果v是np.array类型
-#     if isinstance(v, np.ndarray):
-#         print(k, v.shape)
-#     else:
-#         print(k, v)
 
 # 基本模型--mean：将句子中所有词的词向量取平均作为句子的表示
 X_mean = np.array([sentence.mean(axis=0) for sentence in X_embedding])
@@ -141,6 +110,23 @@ class CNNModel(nn.Module):
         return self.fc(cat)
 
 
+class RNNModel(nn.Module):
+    def __init__(self, embedding_dim, hidden_dim, output_dim, n_layers, bidirectional, dropout):
+        super(RNNModel, self).__init__()
+        self.rnn = nn.GRU(embedding_dim, hidden_dim, num_layers=n_layers,
+                          bidirectional=bidirectional, batch_first=True, dropout=dropout)
+        self.fc = nn.Linear(hidden_dim * 2 if bidirectional else hidden_dim, output_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        _, hidden = self.rnn(x)
+        if self.rnn.bidirectional:
+            hidden = self.dropout(torch.cat((hidden[-2,:,:], hidden[-1,:,:]), dim=1))
+        else:
+            hidden = self.dropout(hidden[-1,:,:])
+        return self.fc(hidden)
+
+
 class TransformerModel(nn.Module):
     # embedding_dim要和X_embedding的最后一个维度一致，也就是glove的维度
     def __init__(self, embedding_dim, num_heads, num_layers, output_dim, dropout):
@@ -173,9 +159,20 @@ def Train_CNNModel(X, y):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(net.parameters(), lr=0.0005)
     net_trainer = NetTrainer(X, y, net, criterion, optimizer,
-                             epochs=10, eval_type="acc", batch_size=16, print_interval=1,
+                             epochs=20, eval_type="acc", batch_size=16, print_interval=1,
                              eval_during_training=False  # 该参数避免显存不足
                              )
+    net_trainer.train_net()
+    acc = net_trainer.evaluate_net(delete_train=True)
+    print(f"Accuracy: {acc}")
+
+
+def Train_RNNModel(X, y):
+    net = RNNModel(50, 128, 5, 2, False, 0.5)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(net.parameters(), lr=0.0005)
+    net_trainer = NetTrainer(X, y, net, criterion, optimizer,
+                             epochs=10, eval_type="acc", batch_size=16, print_interval=1)
     net_trainer.train_net()
     acc = net_trainer.evaluate_net(delete_train=True)
     print(f"Accuracy: {acc}")
@@ -191,23 +188,19 @@ def Train_TransformerModel(X, y):
     acc = net_trainer.evaluate_net(delete_train=True)
     print(f"Accuracy: {acc}")
 
-# 模型1：该模型无法收敛，loss一直是nan
+# 模型1：该模型无法收敛，loss一直是nan，说明mean丢失的信息太多了
 # Train_BaseModel(X_mean, y)
 
 # 模型2：该模型测试集的acc可以增加(10个epoch从0.6增加到了0.75)，但是测试集的acc始终在58%左右，说明泛化能力不强
 # Train_BaseModel(X_flatten, y)
 
-# 模型3：似乎epoch=10太小了，此时的acc是0.626。可以尝试增加epoch，但是一个epoch要训练半分钟。。
-# Train_CNNModel(X_padded, y)
+# 模型3：似乎epoch=10太小了，此时的acc是0.626。因为loss一直在稳步下降，所以可以尝试增加epoch来提高acc，但是一个epoch要训练半分钟。。
+Train_CNNModel(X_padded, y)
 
-Train_TransformerModel(X_padded, y)
+# 模型4：显存不够我跑不了。。
+# Train_RNNModel(X_padded, y)
 
-# # 训练模型
-# for epoch in range(10):
-#     for batch_X, batch_y in dataloader:
-#         optimizer.zero_grad()
-#         outputs = model(batch_X)
-#         loss = criterion(outputs, batch_y)
-#         loss.backward()
-#         optimizer.step()
-#     print(f"Epoch [{epoch+1}/10], Loss: {loss.item():.4f}")
+# 模型5：显存不够我跑不了。。
+# Train_TransformerModel(X_padded, y)
+
+
