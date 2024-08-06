@@ -15,6 +15,12 @@ GLOVE_PATH = "../../model/official/glove/glove.6B.50d.txt"
 set_pd_option()
 df_train = read_df(TRAIN_PATH)
 print(df_train.head())
+print(df_train.shape)  # (156060, 4)
+
+# 去除"Phrase"里小于等于3个字符的短语
+df_train = df_train[df_train["Phrase"].apply(lambda x: len(x.split()) > 3)]
+print(df_train.shape)  # (92549, 4)
+
 # df的列名和含义如下：
 # PhraseId（短语ID）：每个短语的唯一标识符。
 # SentenceId（句子ID）：短语所在句子的标识符，一个句子可能包含多个短语。
@@ -26,10 +32,14 @@ X = df_train["Phrase"].values
 y = df_train["Sentiment"].values
 print(X[:5])
 print(y[:5])
-# 查看y的取值的分布：(array([0, 1, 2, 3, 4], dtype=int64), array([ 7072, 27273, 79582, 32927,  9206], dtype=int64))
+# 查看y的取值的分布：
+# 对于整个数据集，情感标签的分布如下：
+# (array([0, 1, 2, 3, 4], dtype=int64), array([ 7072, 27273, 79582, 32927,  9206], dtype=int64))
 # 如果模型全预测为2，那么准确率为79582/156060=50.994%，因此模型的准确率应该要高于50.994%
+# 对于去除了较短短语的数据集，情感标签的分布如下：
+# (array([0, 1, 2, 3, 4], dtype=int64), array([ 5979, 19785, 36795, 22651,  7339], dtype=int64))
+# 如果模型全预测为2，那么准确率为36795/92549=39.76%，因此模型的准确率应该要高于39.76%
 print(np.unique(y, return_counts=True))
-
 
 # 加载GloVe词向量
 class LoadGlove:
@@ -156,10 +166,13 @@ def Train_BaseModel(X, y):
 
 def Train_CNNModel(X, y):
     net = CNNModel(50, 100, [2, 3, 4], 5, 0.5)
+    # class_weights = 1 / torch.tensor([7072, 27273, 79582, 32927, 9206], dtype=torch.float)
+    # weights = class_weights / class_weights.sum()
+    # criterion = nn.CrossEntropyLoss(weight=weights.to('cuda'))  # 类别不平衡
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(net.parameters(), lr=0.0005)
+    optimizer = optim.Adam(net.parameters(), lr=0.0005)  # 0.0005训练的好慢。
     net_trainer = NetTrainer(X, y, net, criterion, optimizer,
-                             epochs=20, eval_type="acc", batch_size=16, print_interval=1,
+                             epochs=50, eval_type="acc", batch_size=32, print_interval=5,
                              eval_during_training=False  # 该参数避免显存不足
                              )
     net_trainer.train_net()
@@ -195,6 +208,7 @@ def Train_TransformerModel(X, y):
 # Train_BaseModel(X_flatten, y)
 
 # 模型3：似乎epoch=10太小了，此时的acc是0.626。因为loss一直在稳步下降，所以可以尝试增加epoch来提高acc，但是一个epoch要训练半分钟。。
+# 设置epoch=50的时候acc是0.645。
 Train_CNNModel(X_padded, y)
 
 # 模型4：显存不够我跑不了。。
