@@ -1,18 +1,10 @@
-import math
-import matplotlib.pyplot as plt
 from torch import nn
-from torch.nn import functional as F
-from torch.utils.data import Dataset, DataLoader
 import torch
-import d2l
 
 from easier_nn.classic_dataset import load_time_machine
-from easier_nn.load_data import trainset_to_dataloader
 from easier_nn.train_net import train_net
 import easier_nlp.preprocessing as xmpp
-from easier_excel.draw_data import plot_xy
-from easier_tools.easy_count import list_to_freqdf
-from easier_nlp.preprocessing import seq_data_iter_sequential, load_data_time_machine
+from easier_nlp.preprocessing import seq_data_iter_sequential
 
 content = load_time_machine()
 text = xmpp.enText(content)
@@ -53,9 +45,7 @@ ax = plot_xy(x=df3['id'], y=df3['count'], x_label='id', y_label='count', title='
              font_name='Times New Roman', x_scale='log', y_scale='log', show_plt=False, use_ax=True, ax=ax)
 plt.show()
 #
-import torch
 from torch import nn
-from torch.nn import functional as F
 
 batch_size, num_steps = 32, 35
 train_iter, vocab = d2l.load_data_time_machine(batch_size, num_steps)

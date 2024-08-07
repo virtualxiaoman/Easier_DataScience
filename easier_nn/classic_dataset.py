@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 import re
 
-from easier_nn.evaluate_net import show_images
-from easier_nn.load_data import trainset_to_dataloader, testset_to_dataloader
+from easier_excel.read_data import show_images
 from easier_excel.draw_data import plot_xy
+from easier_nn.load_data import trainset_to_dataloader, testset_to_dataloader
 
 
 def load_mnist(flatten=False, print_shape=False):

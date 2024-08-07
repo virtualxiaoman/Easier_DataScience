@@ -32,6 +32,7 @@ X = df_train["Phrase"].values
 y = df_train["Sentiment"].values
 print(X[:5])
 print(y[:5])
+
 # 查看y的取值的分布：
 # 对于整个数据集，情感标签的分布如下：
 # (array([0, 1, 2, 3, 4], dtype=int64), array([ 7072, 27273, 79582, 32927,  9206], dtype=int64))
@@ -40,6 +41,7 @@ print(y[:5])
 # (array([0, 1, 2, 3, 4], dtype=int64), array([ 5979, 19785, 36795, 22651,  7339], dtype=int64))
 # 如果模型全预测为2，那么准确率为36795/92549=39.76%，因此模型的准确率应该要高于39.76%
 print(np.unique(y, return_counts=True))
+
 
 # 加载GloVe词向量
 class LoadGlove:
@@ -89,6 +91,7 @@ for i, sentence in enumerate(X_embedding):
     X_padded[i, :len(sentence)] = sentence
 X_flatten = X_padded.reshape(X_padded.shape[0], -1)
 
+
 class BaseModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(BaseModel, self).__init__()
@@ -131,9 +134,9 @@ class RNNModel(nn.Module):
     def forward(self, x):
         _, hidden = self.rnn(x)
         if self.rnn.bidirectional:
-            hidden = self.dropout(torch.cat((hidden[-2,:,:], hidden[-1,:,:]), dim=1))
+            hidden = self.dropout(torch.cat((hidden[-2, :, :], hidden[-1, :, :]), dim=1))
         else:
-            hidden = self.dropout(hidden[-1,:,:])
+            hidden = self.dropout(hidden[-1, :, :])
         return self.fc(hidden)
 
 

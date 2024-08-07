@@ -1,6 +1,7 @@
 # mnist数据集，分类
-from torch import nn
 import torch
+from torch import nn
+import torchvision
 from easier_nn.classic_dataset import load_mnist, fashion_mnist
 from easier_nn.classic_net import CNN_Net_for_Mnist, Unet, Depth_CNN_Net_for_Mnist, ResNet, ResidualBlock
 from easier_nn.train_net import NetTrainer
@@ -10,6 +11,7 @@ X, y = load_mnist(flatten=False)  # 载入数据集，设置flatten是为了转�
 
 # 你可以依次尝试下面的网络，不同的网络所需要的显存、时间、效果是不同的
 net = ResNet(ResidualBlock, [2, 2, 2, 2], num_classes=10)  # ResNet18，需要改为X, y = load_mnist(flatten=False)
+
 # net = CNN_Net_for_Mnist()  # 需要改为X, y = load_mnist(flatten=True)
 # CNN_Net_for_Mnist这个net我电脑跑不动，复制到kaggle上跑出来的结果是：
 # Epoch 1/50, Train Acc: 0.982, Test Acc: 0.9817142857142858
@@ -36,4 +38,4 @@ trainer.view_parameters()
 trainer.train_net()
 acc = trainer.evaluate_net(delete_train=True)  # delete_train=True表示从cuda上删除训练集，只保留测试集
 print(f"Accuracy: {acc}")
-# torch.save(trainer.net, '../model/mnist/mnist_model_small.pth')
+# torch.save(trainer.net, '../../model/mnist/mnist_model_small.pth')

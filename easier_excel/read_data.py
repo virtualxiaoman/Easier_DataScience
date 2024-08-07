@@ -737,6 +737,23 @@ def read_image(img_path, gray_pic=False, show_details=False):
     return img
 
 
+def show_images(imgs, num_rows, num_cols, titles=None):
+    """绘制图像列表，如果是torch张量，需要先转换为numpy数组：
+    img = img.detach().cpu().numpy()
+    """
+    _, axes = plt.subplots(num_rows, num_cols)
+    axes = axes.flatten()  # 以num_rows=3,num_cols=6为例，flatten将(3, 6)的axes转换成(18,)，这样更方便使用单个索引来访问每个子图轴对象
+    for i, (ax, img) in enumerate(zip(axes, imgs)):
+        # 通过对当前的子图轴对象ax的操作直接影响了axes中相应位置的元素
+        ax.imshow(img)
+        ax.axes.get_xaxis().set_visible(False)
+        ax.axes.get_yaxis().set_visible(False)
+        if titles:
+            ax.set_title(titles[i])
+    plt.show()
+    plt.close()
+
+
 if __name__ == "__main__":
     pass
 
