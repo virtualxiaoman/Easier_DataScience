@@ -33,8 +33,19 @@ test_augs = torchvision.transforms.Compose([
 weights = torchvision.models.ResNet18_Weights.DEFAULT
 finetune_net = torchvision.models.resnet18(weights=weights)  # pretrained is deprecated，所以改为使用weights
 print(finetune_net.fc)  # 最后的全连接层：Linear(in_features=512, out_features=1000, bias=True)
-finetune_net.fc = nn.Linear(finetune_net.fc.in_features, 2)  # 修改最后一层为线性层，输出2类
-nn.init.xavier_uniform_(finetune_net.fc.weight)  # 初始化最后一层的权重
+# 3.1 [可选]冻结预训练模型的参数
+# for param in finetune_net.parameters():
+#     param.requires_grad = False
+# 3.2 [初始化方法1]xavier初始化
+# finetune_net.fc = nn.Linear(finetune_net.fc.in_features, 2)  # 修改最后一层为线性层，输出2类
+# nn.init.xavier_uniform_(finetune_net.fc.weight)  # 初始化最后一层的权重
+# 3.3 [初始化方法2]使用预训练的模型的热狗权重(acc比xavier初始化高多了)
+weight = finetune_net.fc.weight
+hotdog_w = torch.split(weight.data, 1, dim=0)[934]  # torch.Size([1, 512])
+finetune_net.fc = nn.Linear(finetune_net.fc.in_features, 2)
+not_hotdog_w = torch.randn_like(hotdog_w)
+finetune_net.fc.weight.data = torch.cat((hotdog_w, not_hotdog_w), dim=0)
+finetune_net.fc.bias.data.fill_(0)
 
 
 # 如果param_group=True，输出层中的模型参数将使用十倍的学习率
@@ -61,6 +72,15 @@ def train_fine_tuning(net, learning_rate, batch_size=128, num_epochs=5, param_gr
     print(f"Accuracy: {acc}")
 
 
-train_fine_tuning(finetune_net, 5e-5, batch_size=64)  # 微调模型，只在最后一层使用较大的学习率
+train_fine_tuning(finetune_net, 1e-4, batch_size=64)  # 微调模型，只在最后一层使用较大的学习率
 # train_fine_tuning(finetune_net, 5e-5, batch_size=64, param_group=False)  # 所有参数都使用同一个学习率
 # 可以看出，微调模型的精度与训练loss的下降速度都比从头训练的模型要好得多。
+
+# 4. 如何冻结预训练的参数？
+# # 以下代码放在更改fc之前，或者主动声明fc的参数需要更新
+# for param in finetune_net.parameters():
+#     param.requires_grad = False
+# # 解冻fc的参数（非必要）：
+# finetune_net.fc.weight.requires_grad = True
+# finetune_net.fc.bias.requires_grad = True
+# 效果与微调模型相似，但是速度更快。

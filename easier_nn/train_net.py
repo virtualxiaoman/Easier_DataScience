@@ -92,7 +92,7 @@ class NetTrainer:
     def __init__(self, data, target, net, loss_fn, optimizer,          # 必要参数，数据与网络的基本信息
                  test_size=0.2, batch_size=64, epochs=100,             # 可选参数，用于训练
                  eval_type="loss",                                     # 比较重要的参数，用于选择训练的类型（与评估指标有关）
-                 eval_during_training=True,                            # 比较重要的参数，训练时是否进行评估（与显存有关）
+                 eval_during_training=True,                            # 可选参数，训练时是否进行评估（与显存有关）
                                                                        # 补充：经过优化，目前即使训练时评估也不需要额外太多的显存了
                  rnn_input_size=None, rnn_seq_len=None, rnn_hidden_size=None,  # 可选参数，当net是RNN类型时需要传入这些参数
                                                                                # Bug：对RNN的train,test划分不太行，建议传入tuple
@@ -103,8 +103,8 @@ class NetTrainer:
         """
         初始化模型。
 
-        :param data: 数据，X or (X_train, X_test)
-        :param target: 目标，y or (y_train, y_test)
+        :param data: 数据或训练集，X or (X_train, X_test) or train_loader
+        :param target: 目标或验证集，y or (y_train, y_test) or test_loader
         :param net: 支持 net=nn.Sequential() or class Net(nn.Module)
         :param loss_fn: 损失函数，例如：
             nn.MSELoss()  # 回归，y的维度应该是(batch,)
@@ -134,8 +134,8 @@ class NetTrainer:
         # 设备参数
         self.device = device if device else torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         # 数据参数
-        self.data = data  # X or (X_train, X_test)
-        self.target = target  # y or (y_train, y_test)
+        self.data = data  # X or (X_train, X_test) or train_loader
+        self.target = target  # y or (y_train, y_test) or test_loader
         self.test_size = test_size
         self.X_train, self.X_test, self.y_train, self.y_test = None, None, None, None
         self.train_loader, self.test_loader = None, None
@@ -270,7 +270,7 @@ class NetTrainer:
                 loss_sum += loss.item()
                 # 计算当前GPU显存
                 current_gpu_memory = self._log_gpu_memory()
-                # 释放显存
+                # 释放显存。如果不释放显存，直到作用域结束时才会释放显存（这部分一直在reserve的显存里面）
                 del X, y, outputs, loss
                 torch.cuda.empty_cache()
             loss_epoch = loss_sum / len(self.train_loader)
@@ -551,10 +551,13 @@ class NetTrainer:
 
         props = torch.cuda.get_device_properties(current_device_index)  # 获取设备属性
         used_memory = torch.cuda.memory_allocated(current_device_index)  # 已用显存（字节）
+        reserved_memory = torch.cuda.memory_reserved(current_device_index)  # 保留显存（字节）
         total_memory = props.total_memory  # 总显存（字节）
         used_memory_gb = used_memory / (1024 ** 3)  # 已用显存（GB）
+        reserved_memory_gb = reserved_memory / (1024 ** 3)  # 保留显存（GB）
         total_memory_gb = total_memory / (1024 ** 3)  # 总显存（GB）
-        log += f"设备{current_device_index}的显存：{used_memory_gb:.2f}/{total_memory_gb:.2f} GB"
+        log += (f"设备{current_device_index}的显存："
+                f"已用{used_memory_gb:.2f}+保留{reserved_memory_gb:.2f}/总{total_memory_gb:.2f}(GB)")
 
         return log
 
