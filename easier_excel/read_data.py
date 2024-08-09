@@ -752,6 +752,7 @@ def show_images(imgs, num_rows, num_cols, titles=None):
             ax.set_title(titles[i])
     plt.show()
     plt.close()
+    return axes
 
 
 if __name__ == "__main__":
