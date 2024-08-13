@@ -1,4 +1,4 @@
-# 在https://www.kaggle.com/code/vcxiaoman/diffusion/edit上运行
+# 在https://www.kaggle.com/code/vcxiaoman/diffusion/edit上运行，这里只作为存档
 
 import torch
 import torchvision
@@ -787,3 +787,473 @@ for i, t in tqdm(enumerate(noise_scheduler.timesteps)):
     x = noise_scheduler.step(residual, t, x).prev_sample
 fig, ax = plt.subplots(1, 1, figsize=(12, 12))
 ax.imshow(torchvision.utils.make_grid(x.detach().cpu().clip(-1, 1), nrow=8)[0], cmap='Greys')
+
+
+"""第六章"""
+# 6.1 稳定扩散
+import torch
+import requests
+from PIL import Image
+from io import BytesIO
+from matplotlib import pyplot as plt
+from diffusers import (
+    StableDiffusionPipeline,
+    StableDiffusionImg2ImgPipeline,
+    StableDiffusionInpaintPipeline,
+    StableDiffusionDepth2ImgPipeline
+    )
+
+
+def download_image(url):
+    response = requests.get(url)
+    return Image.open(BytesIO(response.content)).convert("RGB")
+
+
+# 下载图片
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+init_image = download_image(img_url).resize((512, 512))
+mask_image = download_image(mask_url).resize((512, 512))
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# 载入管线
+model_id = "stabilityai/stable-diffusion-2-1-base"  # 模型ID
+pipe = StableDiffusionPipeline.from_pretrained(model_id).to(device)
+generator = torch.Generator(device=device).manual_seed(42)  # 生成器，设置随机种子为42
+# 运行这个管线
+pipe_output = pipe(
+    prompt="Palette knife painting of an autumn cityscape",  # What to generate
+    negative_prompt="Oversaturated, blurry, low quality",  # What NOT to generate
+    height=480, width=640,  # 尺寸
+    guidance_scale=8,  # 引导尺度
+    num_inference_steps=35,  # 一次生成需要多少个推理步骤
+    generator=generator  # 生成器
+)
+pipe_output.images[0]
+
+# 比较不同的引导尺度
+cfg_scales = [1.1, 8, 12]  # 不同的引导尺度
+prompt = "A collie with a pink hat"
+fig, axs = plt.subplots(1, len(cfg_scales), figsize=(16, 5))
+for i, ax in enumerate(axs):
+    im = pipe(prompt, height=480, width=480,
+              guidance_scale=cfg_scales[i], num_inference_steps=35,
+              generator=torch.Generator(device=device).manual_seed(42)).images[0]
+    ax.imshow(im)
+    ax.set_title(f'CFG Scale {cfg_scales[i]}')
+
+
+# 6.2 其他管线
+# Img2Img
+model_id = "stabilityai/stable-diffusion-2-1-base"
+img2img_pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id).to(device)
+result_image = img2img_pipe(
+    prompt="An oil painting of a man on a bench",
+    image=init_image,  # The starting image
+    strength=0.6,  # 0 for no change, 1.0 for max strength
+).images[0]
+fig, axs = plt.subplots(1, 2, figsize=(12, 5))
+axs[0].imshow(init_image)
+axs[0].set_title('Input Image')
+axs[1].imshow(result_image)
+axs[1].set_title('Result')
+plt.show()
+
+# inpainting
+pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
+pipe = pipe.to(device)
+prompt = "A small robot, high resolution, sitting on a park bench"
+image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+fig, axs = plt.subplots(1, 3, figsize=(16, 5))
+axs[0].imshow(init_image)
+axs[0].set_title('Input Image')
+axs[1].imshow(mask_image)
+axs[1].set_title('Mask')
+axs[2].imshow(image)
+axs[2].set_title('Result')
+plt.show()
+
+# Depth2Img
+pipe = StableDiffusionDepth2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-depth")
+pipe = pipe.to(device)
+prompt = "An oil painting of a man on a bench"
+image = pipe(prompt=prompt, image=init_image).images[0]
+fig, axs = plt.subplots(1, 2, figsize=(16, 5))
+axs[0].imshow(init_image)
+axs[0].set_title('Input Image')
+axs[1].imshow(image)
+axs[1].set_title('Result')
+
+
+"""第七章"""
+# 7.1 反转
+import torch
+import requests
+import torch.nn as nn
+import torch.nn.functional as F
+from PIL import Image
+from io import BytesIO
+from tqdm.auto import tqdm
+from matplotlib import pyplot as plt
+from torchvision import transforms as tfms
+from diffusers import StableDiffusionPipeline, DDIMScheduler
+
+
+def load_image(url, size=None):
+    response = requests.get(url,timeout=0.2)
+    img = Image.open(BytesIO(response.content)).convert('RGB')
+    if size is not None:
+        img = img.resize(size)
+    return img
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5").to(device)
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+prompt = 'Beautiful DSLR Photograph of a penguin on the beach, golden hour'
+negative_prompt = 'blurry, ugly, stock photo'
+im = pipe(prompt, negative_prompt=negative_prompt).images[0]
+im.resize((256, 256))
+# 查看\alpha
+timesteps = pipe.scheduler.timesteps.cpu()
+alphas = pipe.scheduler.alphas_cumprod[timesteps]
+plt.plot(timesteps, alphas, label='alpha_t')
+plt.legend()
+
+
+# sample：采样
+@torch.no_grad()
+def sample(prompt, start_step=0, start_latents=None, guidance_scale=3.5, num_inference_steps=30,
+           num_images_per_prompt=1, do_classifier_free_guidance=True, negative_prompt='', device=device):
+    text_embeddings = pipe._encode_prompt(prompt, device, num_images_per_prompt,
+                                          do_classifier_free_guidance, negative_prompt)  # 文本提示语的嵌入
+    pipe.scheduler.set_timesteps(num_inference_steps, device=device)  # 推理步数
+    # 生成随机的起始潜在变量
+    if start_latents is None:
+        start_latents = torch.randn(1, 4, 64, 64, device=device)
+        start_latents *= pipe.scheduler.init_noise_sigma
+    latents = start_latents.clone()  # 潜在变量
+    # 逐步迈进
+    for i in tqdm(range(start_step, num_inference_steps)):
+        t = pipe.scheduler.timesteps[i]
+        # 准备模型输入
+        latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+        latent_model_input = pipe.scheduler.scale_model_input(latent_model_input, t)
+        # 预测噪声
+        noise_pred = pipe.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+        # 引导
+        if do_classifier_free_guidance:
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+        # 使用调度器更新步骤:
+        # latents = pipe.scheduler.step(noise_pred, t, latents).prev_sample
+        # 手动实现：
+        prev_t = max(1, t.item() - (1000 // num_inference_steps))  # t-1
+        alpha_t = pipe.scheduler.alphas_cumprod[t.item()]
+        alpha_t_prev = pipe.scheduler.alphas_cumprod[prev_t]
+        predicted_x0 = (latents - (1 - alpha_t).sqrt() * noise_pred) / alpha_t.sqrt()
+        direction_pointing_to_xt = (1 - alpha_t_prev).sqrt() * noise_pred
+        latents = alpha_t_prev.sqrt() * predicted_x0 + direction_pointing_to_xt
+    # 后处理
+    images = pipe.decode_latents(latents)
+    images = pipe.numpy_to_pil(images)
+    return images
+
+
+sample('Watercolor painting of a beach sunset', negative_prompt=negative_prompt,
+       num_inference_steps=50)[0].resize((256, 256))
+
+
+input_image = load_image('https://images.pexels.com/photos/8306128/pexels-photo-8306128.jpeg', size=(512, 512))
+input_image_prompt = "Photograph of a puppy on the grass"
+# encode with VAE
+with torch.no_grad(): latent = pipe.vae.encode(tfms.functional.to_tensor(input_image).unsqueeze(0).to(device)*2-1)
+l = 0.18215 * latent.latent_dist.sample()
+
+
+# invert：反转
+@torch.no_grad()
+def invert(start_latents, prompt, guidance_scale=3.5, num_inference_steps=80, num_images_per_prompt=1,
+           do_classifier_free_guidance=True, negative_prompt='', device=device):
+    text_embeddings = pipe._encode_prompt(prompt, device, num_images_per_prompt,
+                                          do_classifier_free_guidance, negative_prompt)
+    latents = start_latents.clone()  # 指定起始步骤
+    intermediate_latents = []  # 保存反转的隐层
+    pipe.scheduler.set_timesteps(num_inference_steps, device=device)
+    timesteps = reversed(pipe.scheduler.timesteps)  # 反转的时间步
+
+    for i in tqdm(range(1, num_inference_steps), total=num_inference_steps - 1):
+        if i >= num_inference_steps - 1:
+            continue  # 跳过最后一次迭代
+        t = timesteps[i]
+        # 如果正在进行CFG(classifier_free_guidance)，则对隐层进行扩展
+        latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+        latent_model_input = pipe.scheduler.scale_model_input(latent_model_input, t)
+        noise_pred = pipe.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+        # 引导
+        if do_classifier_free_guidance:
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+        current_t = max(0, t.item() - (1000 // num_inference_steps))  # t
+        next_t = t  # min(999, t.item() + (1000//num_inference_steps)) # t+1
+        alpha_t = pipe.scheduler.alphas_cumprod[current_t]
+        alpha_t_next = pipe.scheduler.alphas_cumprod[next_t]
+        # 反转的更新步(re-arranging the update step to get x(t) (new latents) as a function of x(t-1) (current latents)
+        latents = (latents - (1 - alpha_t).sqrt() * noise_pred) * (alpha_t_next.sqrt() / alpha_t.sqrt()) + (
+                    1 - alpha_t_next).sqrt() * noise_pred
+        intermediate_latents.append(latents)
+    return torch.cat(intermediate_latents)
+
+
+inverted_latents = invert(l, input_image_prompt,num_inference_steps=50)
+inverted_latents.shape  # torch.Size([48, 4, 64, 64])
+with torch.no_grad():
+    im = pipe.decode_latents(inverted_latents[-1].unsqueeze(0))
+pipe.numpy_to_pil(im)[0]  # 显示反转的图像
+
+pipe(input_image_prompt, latents=inverted_latents[-1][None], num_inference_steps=50, guidance_scale=3.5).images[0]
+
+# 我们既可以使用更多的时间步来得到更准确的反转，也可以采取“作弊”的方式，直接从相应反转过程50步中的第20步的隐式表达开始，代码如下：
+start_step = 20
+sample(input_image_prompt, start_latents=inverted_latents[-(start_step + 1)][None],
+       start_step=start_step, num_inference_steps=50)[0]
+
+# 更换prompt
+start_step = 10
+new_prompt = input_image_prompt.replace('puppy', 'cat')
+sample(new_prompt, start_latents=inverted_latents[-(start_step + 1)][None],
+       start_step=start_step, num_inference_steps=50)[0]
+
+# 直接对输入图像添加噪声，然后用新的文本提示语直接“去噪”
+start_step = 10
+num_inference_steps=50
+pipe.scheduler.set_timesteps(num_inference_steps)
+noisy_l = pipe.scheduler.add_noise(l, torch.randn_like(l), pipe.scheduler.timesteps[start_step])
+sample(new_prompt, start_latents=noisy_l, start_step=start_step, num_inference_steps=num_inference_steps)[0]
+
+
+# 组合封装
+def edit(input_image, input_image_prompt, edit_prompt, num_steps=100, start_step=30, guidance_scale=3.5):
+    with torch.no_grad():
+        latent = pipe.vae.encode( tfms.functional.to_tensor(input_image).unsqueeze(0).to(device) * 2 - 1)
+    l = 0.18215 * latent.latent_dist.sample()
+    inverted_latents = invert(l, input_image_prompt, num_inference_steps=num_steps)
+    final_im = sample(edit_prompt, start_latents=inverted_latents[-(start_step + 1)][None],
+                      start_step=start_step, num_inference_steps=num_steps, guidance_scale=guidance_scale)[0]
+    return final_im
+
+
+edit(input_image, 'A puppy on the grass', 'an old grey dog on the grass', num_steps=50, start_step=10)
+edit(input_image, 'A puppy on the grass', 'A blue dog on the lawn', num_steps=50, start_step=12, guidance_scale=6)
+# Inversion test with far more steps:
+edit(input_image, 'A puppy on the grass', 'A puppy on the grass', num_steps=350, start_step=1)
+
+
+# 7.2 ControlNet
+# 7.2.1 戴珍珠耳环的少女
+from diffusers.utils import load_image
+image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+image
+
+import cv2
+from PIL import Image
+import numpy as np
+# 边缘提取
+image = np.array(image)
+low_threshold = 100
+high_threshold = 200
+image = cv2.Canny(image, low_threshold, high_threshold)
+image = image[:, :, None]
+image = np.concatenate([image, image, image], axis=2)
+canny_image = Image.fromarray(image)
+
+
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
+import torch
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+pipe = StableDiffusionControlNetPipeline.from_pretrained("runwayml/stable-diffusion-v1-5",
+                                                         controlnet=controlnet, torch_dtype=torch.float16)
+from diffusers import UniPCMultistepScheduler
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+def image_grid(imgs, rows, cols):
+    assert len(imgs) == rows * cols
+    w, h = imgs[0].size
+    grid = Image.new("RGB", size=(cols * w, rows * h))
+    grid_w, grid_h = grid.size
+    for i, img in enumerate(imgs):
+        grid.paste(img, box=(i % cols * w, i // cols * h))
+    return grid
+
+prompt = ", best quality, extremely detailed"
+prompt = [t + prompt for t in ["Sandra Oh", "Kim Kardashian", "rihanna", "taylor swift"]]
+generator = [torch.Generator(device="cpu").manual_seed(2) for i in range(len(prompt))]
+output = pipe(
+    prompt,
+    canny_image,
+    negative_prompt=["monochrome, lowres, bad anatomy, worst quality, low quality"] * 4,
+    num_inference_steps=20,
+    generator=generator,
+)
+image_grid(output.images, 2, 2)
+
+
+# 7.2.2 瑜伽
+urls = "yoga1.jpeg", "yoga2.jpeg", "yoga3.jpeg", "yoga4.jpeg"
+imgs = [
+    load_image("https://huggingface.co/datasets/YiYiXu/controlnet-testing/resolve/main/" + url)
+    for url in urls
+]
+image_grid(imgs, 2, 2)
+# 提取瑜伽姿势
+from controlnet_aux import OpenposeDetector
+model = OpenposeDetector.from_pretrained("lllyasviel/ControlNet")
+poses = [model(img) for img in imgs]
+image_grid(poses, 2, 2)
+
+# 生成其他人物做瑜伽的图片
+controlnet = ControlNetModel.from_pretrained("fusing/stable-diffusion-v1-5-controlnet-openpose",
+                                             torch_dtype=torch.float16)
+model_id = "runwayml/stable-diffusion-v1-5"
+pipe = StableDiffusionControlNetPipeline.from_pretrained(
+    model_id,
+    controlnet=controlnet,
+    torch_dtype=torch.float16,
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+pipe.enable_model_cpu_offload()
+generator = [torch.Generator(device="cpu").manual_seed(2) for i in range(4)]
+prompt = "super-hero character, best quality, extremely detailed"
+output = pipe(
+    [prompt] * 4,
+    poses,
+    negative_prompt=["monochrome, lowres, bad anatomy, worst quality, low quality"] * 4,
+    generator=generator,
+    num_inference_steps=20,
+)
+image_grid(output.images, 2, 2)
+
+
+"""第八章"""
+import torch, random
+import numpy as np
+import torch.nn.functional as F
+from tqdm.auto import tqdm
+from IPython.display import Audio
+from matplotlib import pyplot as plt
+from diffusers import DiffusionPipeline
+from torchaudio import transforms as AT
+from torchvision import transforms as IT
+device = "cuda" if torch.cuda.is_available() else "cpu"
+pipe = DiffusionPipeline.from_pretrained("teticio/audio-diffusion-instrumental-hiphop-256").to(device)
+
+# 在管线中采样一次并将采样结果显示出来
+output = pipe()
+display(output.images[0])
+
+display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
+
+# 音频序列
+print(output.audios[0].shape)
+# 输出的图像（频谱spectrogram）
+print(output.images[0].size)
+
+# 音频管线的额外组件
+pipe.mel
+
+
+# 使用torchaudio模块计算并绘制所生成音频样本的频谱
+spec_transform = AT.Spectrogram(power=2)
+spectrogram = spec_transform(torch.tensor(output.audios[0]))
+print(spectrogram.min(), spectrogram.max())
+log_spectrogram = spectrogram.log()
+plt.imshow(log_spectrogram[0], cmap='gray')
+
+a = pipe.mel.image_to_audio(output.images[0])  # shape: (130560,)
+pipe.mel.load_audio(raw_audio=a)
+im = pipe.mel.audio_slice_to_image(0)
+
+sample_rate_pipeline = pipe.mel.get_sample_rate()  # 采样率22050
+
+display(Audio(output.audios[0], rate=44100))  # 如果采样率错误，则播放速度被加倍，2x
+
+# 载入数据集
+from datasets import load_dataset
+dataset = load_dataset('lewtun/music_genres', split='train')
+# 查看该数据集中不同类别样本所占的比例：
+for g in list(set(dataset['genre'])):
+    print(g, sum(x == g for x in dataset['genre']))
+
+audio_array = dataset[0]['audio']['array']
+sample_rate_dataset = dataset[0]['audio']['sampling_rate']
+print('Audio array shape:', audio_array.shape)  # (1323119,)
+print('Sample rate:', sample_rate_dataset)  # 44100
+display(Audio(audio_array, rate=sample_rate_dataset))
+
+a = dataset[0]['audio']['array']  # 得到音频序列
+pipe.mel.load_audio(raw_audio=a)  # 使用pipe.mel加载音频
+pipe.mel.audio_slice_to_image(0)  # 输出第一幅频谱图像
+
+sample_rate_dataset = dataset[0]['audio']['sampling_rate']  # 调整采样率
+resampler = AT.Resample(sample_rate_dataset, sample_rate_pipeline, dtype=torch.float32)
+to_t = IT.ToTensor()
+
+# 音频片段转换为频谱张量
+def to_image(audio_array):
+    audio_tensor = torch.tensor(audio_array).to(torch.float32)
+    audio_tensor = resampler(audio_tensor)
+    pipe.mel.load_audio(raw_audio=np.array(audio_tensor))
+    num_slices = pipe.mel.get_number_of_slices()
+    slice_idx = random.randint(0, num_slices - 1)  # 每次随机取一张 (除了最后一张)
+    im = pipe.mel.audio_slice_to_image(slice_idx)
+    return im
+
+# 首先将每个音频转换为频谱图像，然后将它们的张量堆叠起来
+def collate_fn(examples):
+    # 图像→张量→缩放至(-1,1)区间→堆叠：to image -> to tensor -> rescale to (-1, 1) -> stack into batch
+    audio_ims = [to_t(to_image(x['audio']['array'])) * 2 - 1 for x in examples]
+    return torch.stack(audio_ims)
+
+
+# 创建一个只包含Chiptune/Glitch（芯片音乐/电子脉冲）风格的音乐
+batch_size = 4
+chosen_genre = 'Electronic'  # 尝试在不同的风格上进行训练
+indexes = [i for i, g in enumerate(dataset['genre']) if g == chosen_genre]
+filtered_dataset = dataset.select(indexes)
+dl = torch.utils.data.DataLoader(filtered_dataset.shuffle(), batch_size=batch_size, collate_fn=collate_fn, shuffle=True)
+batch = next(iter(dl))
+print(batch.shape)
+epochs = 3
+lr = 1e-4
+pipe.unet.train()
+pipe.scheduler.set_timesteps(1000)
+optimizer = torch.optim.AdamW(pipe.unet.parameters(), lr=lr)
+
+for epoch in range(epochs):
+    for step, batch in tqdm(enumerate(dl), total=len(dl)):
+        # Prepare the input images
+        clean_images = batch.to(device)
+        bs = clean_images.shape[0]
+        # Sample a random timestep for each image
+        timesteps = torch.randint(0, pipe.scheduler.num_train_timesteps, (bs,), device=clean_images.device).long()
+        # Add noise to the clean images according to the noise magnitude at each timestep
+        noise = torch.randn(clean_images.shape).to(clean_images.device)
+        noisy_images = pipe.scheduler.add_noise(clean_images, noise, timesteps)
+        # Get the model prediction
+        noise_pred = pipe.unet(noisy_images, timesteps, return_dict=False)[0]
+        # Calculate the loss
+        loss = F.mse_loss(noise_pred, noise)
+        loss.backward(loss)
+        # Update the model parameters with the optimizer
+        optimizer.step()
+        optimizer.zero_grad()
+# 装载之前训练好的频谱样本
+pipe = DiffusionPipeline.from_pretrained("johnowhitaker/Electronic_test").to(device)
+output = pipe()
+display(output.images[0])
+display(Audio(output.audios[0], rate=22050))
+# 输入一个不同形状的起点噪声张量，得到一个更长的频谱样本
+noise = torch.randn(1, 1, pipe.unet.sample_size[0],pipe.unet.sample_size[1]*4).to(device)
+output = pipe(noise=noise)
+display(output.images[0])
+display(Audio(output.audios[0], rate=22050))
