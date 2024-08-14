@@ -1231,22 +1231,20 @@ optimizer = torch.optim.AdamW(pipe.unet.parameters(), lr=lr)
 
 for epoch in range(epochs):
     for step, batch in tqdm(enumerate(dl), total=len(dl)):
-        # Prepare the input images
         clean_images = batch.to(device)
         bs = clean_images.shape[0]
-        # Sample a random timestep for each image
+        # 为每一张图片设置一个随机的时间步
         timesteps = torch.randint(0, pipe.scheduler.num_train_timesteps, (bs,), device=clean_images.device).long()
-        # Add noise to the clean images according to the noise magnitude at each timestep
+        # 按照噪声调度器，在每个时间步为干净的图片加上噪声
         noise = torch.randn(clean_images.shape).to(clean_images.device)
         noisy_images = pipe.scheduler.add_noise(clean_images, noise, timesteps)
-        # Get the model prediction
         noise_pred = pipe.unet(noisy_images, timesteps, return_dict=False)[0]
-        # Calculate the loss
         loss = F.mse_loss(noise_pred, noise)
         loss.backward(loss)
-        # Update the model parameters with the optimizer
         optimizer.step()
         optimizer.zero_grad()
+        del clean_images, noise, noise_pred, loss
+        torch.cuda.empty_cache()
 # 装载之前训练好的频谱样本
 pipe = DiffusionPipeline.from_pretrained("johnowhitaker/Electronic_test").to(device)
 output = pipe()

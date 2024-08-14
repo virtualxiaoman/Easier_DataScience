@@ -17,9 +17,9 @@ df_train = read_df(TRAIN_PATH)
 print(df_train.head())
 print(df_train.shape)  # (156060, 4)
 
-# 去除"Phrase"里小于等于3个字符的短语
-df_train = df_train[df_train["Phrase"].apply(lambda x: len(x.split()) > 3)]
-print(df_train.shape)  # (92549, 4)
+# # 去除"Phrase"里小于等于3个字符的短语
+# df_train = df_train[df_train["Phrase"].apply(lambda x: len(x.split()) > 3)]
+# print(df_train.shape)  # (92549, 4)
 
 # df的列名和含义如下：
 # PhraseId（短语ID）：每个短语的唯一标识符。
