@@ -1,3 +1,12 @@
+<div align="center">
+    <a href="https://github.com/pytorch/pytorch">
+      <img src="https://img.shields.io/badge/framework-PyTorch-informational"> 
+    </a>
+    <a href="https://www.python.org/dev/peps/pep-0008/">
+      <img src="https://img.shields.io/badge/codestyle-PEP--8-informational"> 
+    </a>
+</div>
+
 该项目主要是`easier_excel`与`easier_nn`，各个项目的功能如下：
 ```
 easier_excel: 更便捷地使用机器学习处理表格类型的数据

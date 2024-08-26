@@ -7,7 +7,7 @@ from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 
 
-# 定义RBM类
+# 定义RBM类。
 class RBM(nn.Module):
     def __init__(self, n_visible, n_hidden):
         super(RBM, self).__init__()
