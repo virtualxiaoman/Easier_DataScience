@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 
 class NetTrainer:
     """
-    这是一个简易的nn训练器。仅支持前馈神经网络，暂不支持RNN等含有隐藏状态的网络。
+    这是一个简易的nn训练器。仅支持前馈神经网络，暂未完全确认NetTrainer能完美支持RNN等含有隐藏状态的网络。
 
     你可以使用下面2个代码快速上手：
 

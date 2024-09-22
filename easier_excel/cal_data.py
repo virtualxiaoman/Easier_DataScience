@@ -491,6 +491,7 @@ class Linear(CalData):
         ToMd.text_to_md("多项式回归权重", md_flag)
         ToMd.df_to_md(self.weight, md_flag, md_index=True)
 
+    # todo PRC曲线在正负类别不平衡时更适用，暂未实现
     # 绘制ROC曲线
     def __draw_roc_curve(self, fpr, tpr, draw_roc, md_flag):
         plt.figure()
