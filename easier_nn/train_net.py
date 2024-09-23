@@ -1,5 +1,6 @@
 # 为了便于在kaggle上运行，本文件不依赖于easier_DataScience的其余部分
 
+import os
 import time
 import warnings
 import numpy as np
@@ -89,16 +90,17 @@ class NetTrainer:
 
         print(trainer.test_acc_list)
     """
-    def __init__(self, data, target, net, loss_fn, optimizer,          # 必要参数，数据与网络的基本信息
-                 test_size=0.2, batch_size=64, epochs=100,             # 可选参数，用于训练
-                 eval_type="loss",                                     # 比较重要的参数，用于选择训练的类型（与评估指标有关）
-                 eval_during_training=True,                            # 可选参数，训练时是否进行评估（与显存有关）
-                                                                       # 补充：经过优化，目前即使训练时评估也不需要额外太多的显存了
+
+    def __init__(self, data, target, net, loss_fn, optimizer,  # 必要参数，数据与网络的基本信息
+                 test_size=0.2, batch_size=64, epochs=100,     # 可选参数，用于训练
+                 eval_type="loss",                             # 比较重要的参数，用于选择训练的类型（与评估指标有关）
+                 eval_during_training=True,                    # 可选参数，训练时是否进行评估（与显存有关）
+                                                               # 补充：经过优化，目前即使训练时评估也不需要额外太多的显存了
                  rnn_input_size=None, rnn_seq_len=None, rnn_hidden_size=None,  # 可选参数，当net是RNN类型时需要传入这些参数
-                                                                               # Bug：对RNN的train,test划分不太行，建议传入tuple
-                                                                               # batch_size不是1的时候测试集的损失会有问题
-                 print_interval=20,  # 其他参数，训练时的输出间隔
-                 device=None,  # 其他参数，设备选择
+                 # Bug：对RNN的train,test划分不太行，建议传入tuple
+                 # batch_size不是1的时候测试集的损失会有问题
+                 eval_interval=20,                             # 其他参数，训练时的评估间隔
+                 device=None,                                  # 其他参数，设备选择
                  **kwargs):
         """
         初始化模型。
@@ -115,7 +117,7 @@ class NetTrainer:
         :param batch_size: 批量大小
         :param epochs: 训练轮数
         :param eval_type: 模型类型，只可以是"loss"(回归-损失)或"acc"(分类-准确率)
-        :param print_interval: 打印间隔，请注意train_loss_list等间隔也是这个
+        :param eval_interval: 打印间隔，请注意train_loss_list等间隔也是这个
         :param eval_during_training: 训练时是否进行评估，当显存不够时，可以设置为False，等到训练结束之后再进行评估
           设置为False时，不会影响训练集上的Loss的输出，但是无法输出验证集上的loss、训练集与验证集上的acc，此时默认输出"No eval"
         :param rnn_input_size: RNN的输入维度
@@ -133,33 +135,45 @@ class NetTrainer:
 
         # 设备参数
         self.device = device if device else torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"[__init__]当前设备为{self.device}")
+
         # 数据参数
         self.data = data  # X or (X_train, X_test) or train_loader
         self.target = target  # y or (y_train, y_test) or test_loader
         self.test_size = test_size
         self.X_train, self.X_test, self.y_train, self.y_test = None, None, None, None
         self.train_loader, self.test_loader = None, None
+
         # 网络参数
         self.net = net.to(self.device)
         # self.net = torch.compile(self.net)  # RuntimeError: Windows not yet supported for torch.compile 哈哈哈！
         self.net_type = "FNN"  # 默认是前馈神经网络
         self.loss_fn = loss_fn
         self.optimizer = optimizer
+
         # 训练参数
         self.batch_size = batch_size
         self.epochs = epochs
+
         # 训练输出参数
         self.train_loss_list = []
         self.train_acc_list = []
         self.test_loss_list = []
         self.test_acc_list = []
         self.time_list = []
-        self.print_interval = print_interval  # 打印间隔
+        self.eval_interval = eval_interval  # 打印间隔
+
         # 使用loss还是acc参数
         self.eval_type = eval_type
+
         # 训练时是否进行评估
         self.eval_during_training = eval_during_training
-        self.no_eval_msg = '"No eval"'  # 不在训练时评估的输出
+        self.NO_EVAL_MSG = '"No eval"'  # 不在训练时评估的输出
+        self.best_epoch = None  # 最佳epoch
+        self.best_loss = None  # 最佳loss
+        self.best_acc = None  # 最佳acc
+        self.auto_save_best_net = False  # 是否自动保存最佳模型
+
         # self.original_dataset_to_device = False  # False表示数据还没有转移到设备上
         # 是否是RNN类型
         self.rnn_seq_len = rnn_seq_len  # 该参数暂时没有使用，如果代码写完了还没用就删了得了
@@ -168,6 +182,7 @@ class NetTrainer:
         self.hidden = None
         if self.rnn_input_size:
             self.net_type = "RNN"
+
         # 初始化
         self.init_loader()
 
@@ -177,7 +192,7 @@ class NetTrainer:
         if isinstance(self.data, DataLoader) and isinstance(self.target, DataLoader):
             self.train_loader = self.data
             self.test_loader = self.target
-            print("[init_loader]传入的data与target是DataLoader实例，直接赋值train_loader和test_loader。")
+            print("[init_loader] 传入的data与target是DataLoader实例，直接赋值train_loader和test_loader。")
             # 从DataLoader中获取数据
             self.X_train, self.y_train = self._dataloader_to_tensor(self.train_loader)
             self.X_test, self.y_test = self._dataloader_to_tensor(self.test_loader)
@@ -186,7 +201,7 @@ class NetTrainer:
             if isinstance(self.data, tuple) and isinstance(self.target, tuple):
                 self.X_train, self.X_test = self.data
                 self.y_train, self.y_test = self.target
-                print("[init_loader]因为传入的data与target是元组，所以默认已经划分好了训练集和测试集。"
+                print("[init_loader] 因为传入的data与target是元组，所以默认已经划分好了训练集和测试集。"
                       "默认元组第一个是train，第二个为test。")
             # 否则，需要划分训练集和测试集
             else:
@@ -195,7 +210,7 @@ class NetTrainer:
                                      f"data({self.data.shape[0]}) and target({self.target.shape[0]}).")
                 self.X_train, self.X_test, self.y_train, self.y_test = \
                     train_test_split(self.data, self.target, test_size=self.test_size)
-                print(f"[init_loader]传入的data与target是X, y，则按照test_size={self.test_size}划分训练集和测试集")
+                print(f"[init_loader] 传入的data与target是X, y，则按照test_size={self.test_size}划分训练集和测试集")
 
             # if self.net_type == "RNN":
             #     self.X_train, self.y_train = self._prepare_rnn_data(self.X_train, self.y_train)
@@ -223,6 +238,7 @@ class NetTrainer:
         # print(target)
         dataset = TensorDataset(data, target)
         if train:
+            # todo 本处对RNN的处理应该有问题
             if self.net_type == "RNN":
                 return DataLoader(dataset, batch_size=self.batch_size, shuffle=False, drop_last=self.drop_last)
             else:
@@ -231,11 +247,19 @@ class NetTrainer:
             return DataLoader(dataset, batch_size=self.batch_size, shuffle=False, drop_last=self.drop_last)
 
     # [主函数]训练模型
-    def train_net(self, hidden=None):
+    def train_net(self, hidden=None, net_save_path: str = None) -> None:
+        """
+        训练模型
+        :param hidden: 隐藏层，用于RNN
+        :param net_save_path: 最佳模型保存path，会在每次评估后保存最佳模型，该参数在eval_during_training=True时有效。
+            暂不支持选择state_dict的保存除非改代码，只支持整个模型的保存（因为我平时不怎么用state_dict阿巴阿巴）
+        :return: None
+        """
         if hidden is not None:
             self.hidden = hidden
         print(f"[train_net]开始训练模型，总共epochs={self.epochs}，batch_size={self.batch_size}，"
               f"当前设备为{self.device}，网络类型为{self.net_type}，评估类型为{self.eval_type}。")
+        self.__check_best_net_save_path(net_save_path)
         current_gpu_memory = self._log_gpu_memory()
         print(current_gpu_memory)
         self.net.train()
@@ -275,8 +299,9 @@ class NetTrainer:
                 torch.cuda.empty_cache()
             loss_epoch = loss_sum / len(self.train_loader)
             self.time_list.append(time.time() - start_time)
+            # todo 该部分最好写成新的函数
             # 打印训练信息
-            if epoch % self.print_interval == 0:
+            if epoch % self.eval_interval == 0:
                 if self.eval_type == "loss":
                     self.train_loss_list.append(loss_epoch)
                     self.test_loss_list.append(self.evaluate_net())
@@ -284,6 +309,14 @@ class NetTrainer:
                           f'Test Loss: {self.test_loss_list[-1]}, '
                           f'Time: {self.time_list[-1]:.2f}s, '
                           f'GPU: {current_gpu_memory}')
+                    # todo 该函数暂未验证
+                    if self.eval_during_training:
+                        # 如果当前loss小于最佳loss，则保存self.epoch和self.loss
+                        if self.best_loss is None or self.test_loss_list[-1] < self.best_loss:
+                            self.best_loss = self.test_loss_list[-1]
+                            self.best_epoch = epoch
+                            if self.auto_save_best_net:
+                                self.__save_net(net_save_path)
                 elif self.eval_type == "acc":
                     self.train_acc_list.append(self.evaluate_net(eval_type="train"))
                     self.test_acc_list.append(self.evaluate_net())
@@ -292,6 +325,14 @@ class NetTrainer:
                           f'Test Acc: {self.test_acc_list[-1]}, '
                           f'Time: {self.time_list[-1]:.2f}s, '
                           f'GPU: {current_gpu_memory}')
+                    # todo 该函数暂未验证
+                    if self.eval_during_training:
+                        # 如果当前acc大于最佳acc，则保存self.epoch和self.acc
+                        if self.best_acc is None or self.test_acc_list[-1] > self.best_acc:
+                            self.best_acc = self.test_acc_list[-1]
+                            self.best_epoch = epoch
+                            if self.auto_save_best_net:
+                                self.__save_net(net_save_path)
                 else:
                     raise ValueError("eval_type must be 'loss' or 'acc'")
         print(f"[train_net]训练结束，总共花费时间: {sum(self.time_list)}秒")
@@ -299,12 +340,12 @@ class NetTrainer:
         self.eval_during_training = True  # 训练完成后，可以进行评估
 
     # [主函数]评估模型(暂不支持RNN的评估)
-    def evaluate_net(self, eval_type="test", delete_train=False):
+    def evaluate_net(self, eval_type: str = "test", delete_train: bool = False) -> float | str:
         """
         评估模型
         :param eval_type: 评估类型，支持"test"和"train"
         :param delete_train: delete_train=True表示删除训练集，只保留测试集，这样可以释放显存
-        :return: 损失或准确率，依据self.net_type而定
+        :return: 损失或准确率，依据self.net_type而定；在不评估时返回self.NO_EVAL_MSG(默认为'"No eval"')
         """
         if delete_train:
             del self.X_train, self.y_train
@@ -312,9 +353,9 @@ class NetTrainer:
         # if self.eval_during_training:
         #     self.__original_dataset_to_device()  # 如果要在训练时评估，需要将数据转移到设备上
         # else:
-        #     return self.no_eval_msg  # 不在训练时评估
+        #     return self.NO_EVAL_MSG  # 不在训练时评估
         if not self.eval_during_training:
-            return self.no_eval_msg  # 不在训练时评估
+            return self.NO_EVAL_MSG  # 不在训练时评估
         self.net.eval()
         with torch.no_grad():  # 在评估时禁用梯度计算，节省内存
             if self.eval_type == "loss":
@@ -377,7 +418,7 @@ class NetTrainer:
         # print(f'Accuracy: {100 * correct / total}%')
 
     # [主函数]查看模型参数。使用Netron(需要安装)可视化更好，这里只是简单的查看
-    def view_parameters(self, view_net_struct=True, view_params_count=True, view_params_details=False):
+    def view_parameters(self, view_net_struct=False, view_params_count=True, view_params_details=False):
         # if view_layers:
         #     for layer in self.net.children():
         #         print(layer)
@@ -530,7 +571,7 @@ class NetTrainer:
     # [log函数]打印GPU显存
     def _log_gpu_memory(self):
         if not self.eval_during_training:
-            return self.no_eval_msg  # 不在训练时评估
+            return self.NO_EVAL_MSG  # 不在训练时评估
         log = None
 
         # 获取self.device的设备索引
@@ -623,6 +664,34 @@ class NetTrainer:
         else:
             return y
 
+    # 检查模型路径是否合法，该函数仅在train_net中调用
+    def __check_best_net_save_path(self, net_save_path):
+        if isinstance(net_save_path, str):
+            if not self.eval_during_training:
+                self.auto_save_best_net = False
+                warnings.warn("net_save_path参数在eval_during_training=False时无效，auto_save_best_net仍然是False")
+            else:
+                if os.path.exists(os.path.dirname(net_save_path)):
+                    self.auto_save_best_net = True
+                    print(f"[train_net] 最佳模型保存地址net_save_path={net_save_path}")
+                else:
+                    self.auto_save_best_net = False
+                    warnings.warn(f"最佳模型保存地址net_save_path={net_save_path}不存在，auto_save_best_net仍然是False")
+                if not net_save_path.endswith(".pth"):
+                    print(f"[train_net] 请注意net_save_path={net_save_path}未以'.pth'结尾")
+
+    # 保存模型
+    def __save_net(self, net_save_path, save_type="net"):
+        try:
+            if save_type == "net":
+                torch.save(self.net, net_save_path)
+            elif save_type == "state_dict":
+                torch.save(self.net.state_dict(), net_save_path)
+            else:
+                raise ValueError(f"[train_net] 保存类型save_type={save_type}不合法")
+            print(f"[train_net] 已保存{save_type}模型到{net_save_path}")
+        except Exception as e:
+            warnings.warn(f"[train_net] 保存模型失败，错误信息：{e}")
     # 将原始数据转移到设备上，暂被弃用
     # def __original_dataset_to_device(self):
     #     # 暂时不知道只使用self.original_dataset_to_device是否会有问题，或许可以直接检查self.X_train.device(有问题再改吧)

@@ -1,5 +1,7 @@
 from playwright.sync_api import sync_playwright
 import os
+from selenium import webdriver
+from PIL import Image
 # import base64
 # import re
 #
@@ -16,7 +18,7 @@ import os
 # INPUT_HTML = r'E:\virtualxiaoman.github.io\article\深度学习.html'
 INPUT_HTML = r'D:\HP\Desktop\小满の大学笔记\数据科学导论\深度学习.HTML'
 OUTPUT_HTML = 'output.html'
-OUTPUT_PDF = 'output.pdf'
+OUTPUT_PDF = 'output_png.pdf'
 # INPUT_MD = r'D:\HP\Desktop\小满の大学笔记\数据科学导论\深度学习.md'
 
 # def md_to_html(md_file, output_html):
@@ -98,6 +100,34 @@ def html_to_pdf(html_file, output_pdf):
             'right': '15mm'
         })
         browser.close()
+
+
+# def html2pngpdf(html_file, output_pdf):
+#     # 启动无头浏览器
+#     options = webdriver.ChromeOptions()
+#     options.add_argument('--headless')
+#     options.add_argument('--disable-gpu')
+#     browser = webdriver.Chrome(options=options)
+#
+#     # 访问HTML文件
+#     browser.get(f'file://{os.path.abspath(html_file)}')
+#
+#     # 获取页面宽度和高度
+#     page_width = browser.execute_script('return document.body.scrollWidth')
+#     page_height = browser.execute_script('return document.body.scrollHeight')
+#
+#     # 设置浏览器窗口大小以适应整个页面
+#     browser.set_window_size(page_width, page_height)
+#
+#     # 截取整个页面的截图
+#     screenshot_path = 'page.png'
+#     browser.save_screenshot(screenshot_path)
+#     browser.quit()
+#
+#     # 使用PIL将截图转换为PDF
+#     image = Image.open(screenshot_path)
+#     image.save(output_pdf, 'PDF', resolution=500, optimize=True)
+#     image.close()
 
 
 if __name__ == '__main__':

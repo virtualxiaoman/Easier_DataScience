@@ -65,7 +65,7 @@ def train_fine_tuning(net, learning_rate, batch_size=128, num_epochs=5, param_gr
     else:
         trainer = torch.optim.SGD(net.parameters(), lr=learning_rate, weight_decay=0.001)
     net_trainer = NetTrainer(train_iter, test_iter, net, loss, trainer, epochs=num_epochs, eval_type="acc",
-                             batch_size=batch_size, print_interval=1, eval_during_training=True)
+                             batch_size=batch_size, eval_interval=1, eval_during_training=True)
     net_trainer.view_parameters(view_params_details=False)
     net_trainer.train_net()
     acc = net_trainer.evaluate_net(delete_train=True)

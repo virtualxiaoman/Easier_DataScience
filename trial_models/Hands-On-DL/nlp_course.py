@@ -161,7 +161,7 @@ def Train_BaseModel(X, y):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(net.parameters(), lr=0.0005)
     net_trainer = NetTrainer(X, y, net, criterion, optimizer,
-                             epochs=10, eval_type="acc", batch_size=16, print_interval=1)
+                             epochs=10, eval_type="acc", batch_size=16, eval_interval=1)
     net_trainer.train_net()
     acc = net_trainer.evaluate_net(delete_train=True)
     print(f"Accuracy: {acc}")
@@ -175,7 +175,7 @@ def Train_CNNModel(X, y):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(net.parameters(), lr=0.0005)  # 0.0005训练的好慢。
     net_trainer = NetTrainer(X, y, net, criterion, optimizer,
-                             epochs=50, eval_type="acc", batch_size=32, print_interval=5,
+                             epochs=50, eval_type="acc", batch_size=32, eval_interval=5,
                              eval_during_training=False  # 该参数避免显存不足
                              )
     net_trainer.train_net()
@@ -188,7 +188,7 @@ def Train_RNNModel(X, y):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(net.parameters(), lr=0.0005)
     net_trainer = NetTrainer(X, y, net, criterion, optimizer,
-                             epochs=10, eval_type="acc", batch_size=16, print_interval=1)
+                             epochs=10, eval_type="acc", batch_size=16, eval_interval=1)
     net_trainer.train_net()
     acc = net_trainer.evaluate_net(delete_train=True)
     print(f"Accuracy: {acc}")
@@ -199,7 +199,7 @@ def Train_TransformerModel(X, y):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(net.parameters(), lr=0.0005)
     net_trainer = NetTrainer(X, y, net, criterion, optimizer,
-                             epochs=10, eval_type="acc", batch_size=16, print_interval=1)
+                             epochs=10, eval_type="acc", batch_size=16, eval_interval=1)
     net_trainer.train_net()
     acc = net_trainer.evaluate_net(delete_train=True)
     print(f"Accuracy: {acc}")
