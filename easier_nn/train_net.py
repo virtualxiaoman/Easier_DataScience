@@ -135,7 +135,7 @@ class NetTrainer:
 
         # 设备参数
         self.device = device if device else torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"[__init__]当前设备为{self.device}")
+        print(f"[__init__] 当前设备为{self.device}")
 
         # 数据参数
         self.data = data  # X or (X_train, X_test) or train_loader
@@ -228,6 +228,9 @@ class NetTrainer:
         self.y_train = self._target_reshape_1D(self.y_train)
         self.y_test = self._target_reshape_1D(self.y_test)
 
+        print(f"[init_loader] 训练集X, y的shape为{self.X_train.shape}, {self.y_train.shape}。"
+              f"测试集X, y的shape为{self.X_test.shape}, {self.y_test.shape}。")
+
     # [子函数]创建dataloader
     def create_dataloader(self, data, target, train=True):
         # dtype依据data的类型而定
@@ -257,11 +260,10 @@ class NetTrainer:
         """
         if hidden is not None:
             self.hidden = hidden
-        print(f"[train_net]开始训练模型，总共epochs={self.epochs}，batch_size={self.batch_size}，"
+        print(f"[train_net] 开始训练模型，总共epochs={self.epochs}，batch_size={self.batch_size}，"
               f"当前设备为{self.device}，网络类型为{self.net_type}，评估类型为{self.eval_type}。")
         self.__check_best_net_save_path(net_save_path)
         current_gpu_memory = self._log_gpu_memory()
-        print(current_gpu_memory)
         self.net.train()
 
         for epoch in range(self.epochs):
@@ -302,42 +304,49 @@ class NetTrainer:
             # todo 该部分最好写成新的函数
             # 打印训练信息
             if epoch % self.eval_interval == 0:
-                if self.eval_type == "loss":
-                    self.train_loss_list.append(loss_epoch)
-                    self.test_loss_list.append(self.evaluate_net())
-                    print(f'Epoch {epoch + 1}/{self.epochs}, Train Loss: {loss_epoch}, '
-                          f'Test Loss: {self.test_loss_list[-1]}, '
-                          f'Time: {self.time_list[-1]:.2f}s, '
-                          f'GPU: {current_gpu_memory}')
-                    # todo 该函数暂未验证
-                    if self.eval_during_training:
-                        # 如果当前loss小于最佳loss，则保存self.epoch和self.loss
-                        if self.best_loss is None or self.test_loss_list[-1] < self.best_loss:
-                            self.best_loss = self.test_loss_list[-1]
-                            self.best_epoch = epoch
-                            if self.auto_save_best_net:
-                                self.__save_net(net_save_path)
-                elif self.eval_type == "acc":
-                    self.train_acc_list.append(self.evaluate_net(eval_type="train"))
-                    self.test_acc_list.append(self.evaluate_net())
-                    print(f'Epoch {epoch + 1}/{self.epochs}, Train Loss: {loss_epoch}, '
-                          f'Train Acc: {self.train_acc_list[-1]}, '
-                          f'Test Acc: {self.test_acc_list[-1]}, '
-                          f'Time: {self.time_list[-1]:.2f}s, '
-                          f'GPU: {current_gpu_memory}')
-                    # todo 该函数暂未验证
-                    if self.eval_during_training:
-                        # 如果当前acc大于最佳acc，则保存self.epoch和self.acc
-                        if self.best_acc is None or self.test_acc_list[-1] > self.best_acc:
-                            self.best_acc = self.test_acc_list[-1]
-                            self.best_epoch = epoch
-                            if self.auto_save_best_net:
-                                self.__save_net(net_save_path)
-                else:
-                    raise ValueError("eval_type must be 'loss' or 'acc'")
+                self.log_and_update_eval_msg(epoch, loss_epoch, current_gpu_memory, net_save_path)
+
         print(f"[train_net]训练结束，总共花费时间: {sum(self.time_list)}秒")
-        print(self._log_gpu_memory())
+        if self.eval_during_training:
+            if self.eval_type == "loss":
+                print(f"[train_net] 最佳结果 epoch = {self.best_epoch + 1}, loss = {self.best_loss}")
+            elif self.eval_type == "acc":
+                print(f"[train_net] 最佳结果 epoch = {self.best_epoch + 1}, acc = {self.best_acc}")
         self.eval_during_training = True  # 训练完成后，可以进行评估
+
+    # 在训练时评估并保存最佳模型，仅在train_net中调用
+    def log_and_update_eval_msg(self, epoch, loss_epoch, current_gpu_memory, net_save_path):
+        if self.eval_type == "loss":
+            self.train_loss_list.append(loss_epoch)
+            self.test_loss_list.append(self.evaluate_net())
+            print(f'Epoch {epoch + 1}/{self.epochs}, Train Loss: {loss_epoch}, '
+                  f'Test Loss: {self.test_loss_list[-1]}, '
+                  f'Time: {self.time_list[-1]:.2f}s, '
+                  f'GPU: {current_gpu_memory}')
+            if self.eval_during_training:
+                # 如果当前loss小于最佳loss，则保存self.epoch和self.loss
+                if self.best_loss is None or self.test_loss_list[-1] < self.best_loss:
+                    self.best_loss = self.test_loss_list[-1]
+                    self.best_epoch = epoch
+                    if self.auto_save_best_net:
+                        self.__save_net(net_save_path)
+        elif self.eval_type == "acc":
+            self.train_acc_list.append(self.evaluate_net(eval_type="train"))
+            self.test_acc_list.append(self.evaluate_net())
+            print(f'Epoch {epoch + 1}/{self.epochs}, Train Loss: {loss_epoch}, '
+                  f'Train Acc: {self.train_acc_list[-1]}, '
+                  f'Test Acc: {self.test_acc_list[-1]}, '
+                  f'Time: {self.time_list[-1]:.2f}s, '
+                  f'GPU: {current_gpu_memory}')
+            if self.eval_during_training:
+                # 如果当前acc大于最佳acc，则保存self.epoch和self.acc
+                if self.best_acc is None or self.test_acc_list[-1] > self.best_acc:
+                    self.best_acc = self.test_acc_list[-1]
+                    self.best_epoch = epoch
+                    if self.auto_save_best_net:
+                        self.__save_net(net_save_path)
+        else:
+            raise ValueError("eval_type must be 'loss' or 'acc'")
 
     # [主函数]评估模型(暂不支持RNN的评估)
     def evaluate_net(self, eval_type: str = "test", delete_train: bool = False) -> float | str:
@@ -671,14 +680,19 @@ class NetTrainer:
                 self.auto_save_best_net = False
                 warnings.warn("net_save_path参数在eval_during_training=False时无效，auto_save_best_net仍然是False")
             else:
-                if os.path.exists(os.path.dirname(net_save_path)):
+                dir_path = os.path.dirname(net_save_path)
+                if os.path.exists(dir_path):
                     self.auto_save_best_net = True
                     print(f"[train_net] 最佳模型保存地址net_save_path={net_save_path}")
                 else:
-                    self.auto_save_best_net = False
-                    warnings.warn(f"最佳模型保存地址net_save_path={net_save_path}不存在，auto_save_best_net仍然是False")
+                    self.auto_save_best_net = True
+                    try:
+                        os.makedirs(dir_path, exist_ok=True)
+                        warnings.warn(f"[train_net] 最佳模型保存文件夹dir_path='{dir_path}'不存在，已自动创建")
+                    except Exception as e:
+                        warnings.warn(f"[train_net] 最佳模型保存文件夹dir_path='{dir_path}'创建失败，错误信息：{e}")
                 if not net_save_path.endswith(".pth"):
-                    print(f"[train_net] 请注意net_save_path={net_save_path}未以'.pth'结尾")
+                    print(f"[train_net] 请注意net_save_path='{net_save_path}'未以'.pth'结尾")
 
     # 保存模型
     def __save_net(self, net_save_path, save_type="net"):
@@ -689,7 +703,7 @@ class NetTrainer:
                 torch.save(self.net.state_dict(), net_save_path)
             else:
                 raise ValueError(f"[train_net] 保存类型save_type={save_type}不合法")
-            print(f"[train_net] 已保存{save_type}模型到{net_save_path}")
+            # print(f"[train_net] 已保存{save_type}模型到{net_save_path}")
         except Exception as e:
             warnings.warn(f"[train_net] 保存模型失败，错误信息：{e}")
     # 将原始数据转移到设备上，暂被弃用
