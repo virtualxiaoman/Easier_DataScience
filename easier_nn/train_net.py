@@ -105,8 +105,8 @@ class NetTrainer:
         """
         初始化模型。
 
-        :param data: 数据或训练集，X or (X_train, X_test) or train_loader
-        :param target: 目标或验证集，y or (y_train, y_test) or test_loader
+        :param data: 数据(全部数据/已经划分好了的元组)或训练集(包含X, y的DataLoader): X or (X_train, X_test) or train_loader
+        :param target: 目标(全部数据/已经划分好了的元组)或验证集(包含X, y的DataLoader): y or (y_train, y_test) or test_loader
         :param net: 支持 net=nn.Sequential() or class Net(nn.Module)
         :param loss_fn: 损失函数，例如：
             nn.MSELoss()  # 回归，y的维度应该是(batch,)
@@ -165,6 +165,10 @@ class NetTrainer:
 
         # 使用loss还是acc参数
         self.eval_type = eval_type
+
+        # 当前训练epoch的各种参数
+        self.loss_epoch = None  # 每个epoch的loss
+        self.current_gpu_memory = None  # 当前GPU显存
 
         # 训练时是否进行评估
         self.eval_during_training = eval_during_training
@@ -263,48 +267,14 @@ class NetTrainer:
         print(f"[train_net] 开始训练模型，总共epochs={self.epochs}，batch_size={self.batch_size}，"
               f"当前设备为{self.device}，网络类型为{self.net_type}，评估类型为{self.eval_type}。")
         self.__check_best_net_save_path(net_save_path)
-        current_gpu_memory = self._log_gpu_memory()
-        self.net.train()
+        self.current_gpu_memory = self._log_gpu_memory()
 
         for epoch in range(self.epochs):
-            start_time = time.time()
-            loss_sum = 0.0
-            for X, y in self.train_loader:
-                # 初始化数据
-                X, y = X.to(self.device), y.to(self.device)
-                self.optimizer.zero_grad()
-                # 前向传播
-                if self.net_type == "RNN":
-                    if self.hidden is not None:
-                        self.hidden.detach_()
-                    #     print(self.hidden.shape)
-                    # print(X.shape, y.shape)
-                    # print("----------上面是TRAIN的hidden, X, y的shape---------")
-                    outputs, self.hidden = self.net(X, self.hidden)
-                    loss = self.loss_fn(outputs, y)
-                else:
-                    # print(X.shape, y.shape)
-                    # print("----------上面是TRAIN的hidden, X, y的shape---------")
-                    outputs = self.net(X)
-                    # print(X.shape, y.shape, outputs.shape)
-                    loss = self.loss_fn(outputs, y)
-                # 反向传播
-                loss.backward()
-                # 更新参数
-                self.optimizer.step()
-                # 计算损失
-                loss_sum += loss.item()
-                # 计算当前GPU显存
-                current_gpu_memory = self._log_gpu_memory()
-                # 释放显存。如果不释放显存，直到作用域结束时才会释放显存（这部分一直在reserve的显存里面）
-                del X, y, outputs, loss
-                torch.cuda.empty_cache()
-            loss_epoch = loss_sum / len(self.train_loader)
-            self.time_list.append(time.time() - start_time)
-            # todo 该部分最好写成新的函数
+            self.net.train()  # 确保dropout等在训练时生效
+            self.train_epoch()  # 训练的主体部分
             # 打印训练信息
             if epoch % self.eval_interval == 0:
-                self.log_and_update_eval_msg(epoch, loss_epoch, current_gpu_memory, net_save_path)
+                self.log_and_update_eval_msg(epoch, net_save_path)
 
         print(f"[train_net]训练结束，总共花费时间: {sum(self.time_list)}秒")
         if self.eval_during_training:
@@ -314,15 +284,52 @@ class NetTrainer:
                 print(f"[train_net] 最佳结果 epoch = {self.best_epoch + 1}, acc = {self.best_acc}")
         self.eval_during_training = True  # 训练完成后，可以进行评估
 
-    # 在训练时评估并保存最佳模型，仅在train_net中调用
-    def log_and_update_eval_msg(self, epoch, loss_epoch, current_gpu_memory, net_save_path):
+    # 对某个epoch进行训练，仅在train_net中调用。可以通过复写这个函数来实现自定义的训练
+    def train_epoch(self):
+        start_time = time.time()
+        loss_sum = 0.0
+        for X, y in self.train_loader:
+            # 初始化数据
+            X, y = X.to(self.device), y.to(self.device)
+            self.optimizer.zero_grad()
+            # 前向传播
+            if self.net_type == "RNN":
+                if self.hidden is not None:
+                    self.hidden.detach_()
+                #     print(self.hidden.shape)
+                # print(X.shape, y.shape)
+                # print("----------上面是TRAIN的hidden, X, y的shape---------")
+                outputs, self.hidden = self.net(X, self.hidden)
+                loss = self.loss_fn(outputs, y)
+            else:
+                # print(X.shape, y.shape)
+                # print("----------上面是TRAIN的hidden, X, y的shape---------")
+                outputs = self.net(X)
+                # print(X.shape, y.shape, outputs.shape)
+                loss = self.loss_fn(outputs, y)
+            # 反向传播
+            loss.backward()
+            # 更新参数
+            self.optimizer.step()
+            # 计算损失
+            loss_sum += loss.item()
+            # 计算当前GPU显存
+            self.current_gpu_memory = self._log_gpu_memory()
+            # 释放显存。如果不释放显存，直到作用域结束时才会释放显存（这部分一直在reserve的显存里面）
+            del X, y, outputs, loss
+            torch.cuda.empty_cache()
+        self.loss_epoch = loss_sum / len(self.train_loader)
+        self.time_list.append(time.time() - start_time)
+
+    # 在训练时评估并保存最佳模型，仅在train_net中调用。此函数会不断存储最佳模型，只是怕后面哪一次意外失败了那就白训练了
+    def log_and_update_eval_msg(self, epoch, net_save_path):
         if self.eval_type == "loss":
-            self.train_loss_list.append(loss_epoch)
+            self.train_loss_list.append(self.loss_epoch)
             self.test_loss_list.append(self.evaluate_net())
-            print(f'Epoch {epoch + 1}/{self.epochs}, Train Loss: {loss_epoch}, '
+            print(f'Epoch {epoch + 1}/{self.epochs}, Train Loss: {self.loss_epoch}, '
                   f'Test Loss: {self.test_loss_list[-1]}, '
                   f'Time: {self.time_list[-1]:.2f}s, '
-                  f'GPU: {current_gpu_memory}')
+                  f'GPU: {self.current_gpu_memory}')
             if self.eval_during_training:
                 # 如果当前loss小于最佳loss，则保存self.epoch和self.loss
                 if self.best_loss is None or self.test_loss_list[-1] < self.best_loss:
@@ -333,11 +340,11 @@ class NetTrainer:
         elif self.eval_type == "acc":
             self.train_acc_list.append(self.evaluate_net(eval_type="train"))
             self.test_acc_list.append(self.evaluate_net())
-            print(f'Epoch {epoch + 1}/{self.epochs}, Train Loss: {loss_epoch}, '
+            print(f'Epoch {epoch + 1}/{self.epochs}, Train Loss: {self.loss_epoch}, '
                   f'Train Acc: {self.train_acc_list[-1]}, '
                   f'Test Acc: {self.test_acc_list[-1]}, '
                   f'Time: {self.time_list[-1]:.2f}s, '
-                  f'GPU: {current_gpu_memory}')
+                  f'GPU: {self.current_gpu_memory}')
             if self.eval_during_training:
                 # 如果当前acc大于最佳acc，则保存self.epoch和self.acc
                 if self.best_acc is None or self.test_acc_list[-1] > self.best_acc:
@@ -365,7 +372,7 @@ class NetTrainer:
         #     return self.NO_EVAL_MSG  # 不在训练时评估
         if not self.eval_during_training:
             return self.NO_EVAL_MSG  # 不在训练时评估
-        self.net.eval()
+        self.net.eval()  # 确保评估时不使用dropout等
         with torch.no_grad():  # 在评估时禁用梯度计算，节省内存
             if self.eval_type == "loss":
                 if self.net_type == "RNN":
@@ -384,7 +391,6 @@ class NetTrainer:
                         # 事实上一般不调用这个，因为训练集的loss在训练时已经计算了
                         loss = self._cal_fnn_loss(self.net, self.loss_fn, self.X_train, self.y_train)
                         # loss = self.loss_fn(self.net(self.X_train), self.y_train).item()
-                self.net.train()
                 return loss
             elif self.eval_type == "acc":
                 if self.net_type == "RNN":
@@ -413,7 +419,6 @@ class NetTrainer:
                         # correct = (predictions == self.y_train).sum().item()
                         # n = self.y_train.numel()
                         # acc = correct / n
-                self.net.train()
                 return acc
         # total, correct = 0, 0
         # with torch.no_grad():

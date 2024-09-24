@@ -11,12 +11,12 @@ from PIL import Image
 
 from easier_nn.train_net import NetTrainer
 
-epochs = 20
+epochs = 5
 batch_size = 32
 image_path = './input/flowerdata/data'
 save_path = './model/demo/fine_tuning/flower_model.pth'
 
-# 1.数据转换
+# 1. 数据转换
 data_transform = {
     # 训练集数据增强、归一化
     'train': transforms.Compose([
@@ -57,7 +57,7 @@ print(f"Accuracy: {acc}")
 
 # 5. 对某张图片进行显式的预测以查看效果
 img_path = r'./input/flowerdata/test/test01.jpg'
-img = Image.open(img_path)
+img = Image.open(img_path)  # (C, H, W)
 img = data_transform['val/test'](img)
 img = torch.unsqueeze(img, dim=0).to(net_trainer.device)  # 将图像升维，增加batch_size维度
 class_to_idx = train_dataset.class_to_idx  # {'roses': 0, 'sunflowers': 1}
