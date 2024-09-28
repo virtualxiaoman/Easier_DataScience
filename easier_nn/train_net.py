@@ -247,6 +247,7 @@ class NetTrainer:
         if train:
             # todo 本处对RNN的处理应该有问题
             if self.net_type == "RNN":
+                warnings.warn("此处代码暂未修正，对于RNN，建议使用train_loader和test_loader直接传入DataLoader实例。")
                 return DataLoader(dataset, batch_size=self.batch_size, shuffle=False, drop_last=self.drop_last)
             else:
                 return DataLoader(dataset, batch_size=self.batch_size, shuffle=True, drop_last=self.drop_last)
@@ -300,11 +301,12 @@ class NetTrainer:
                 # print(X.shape, y.shape)
                 # print("----------上面是TRAIN的hidden, X, y的shape---------")
                 outputs, self.hidden = self.net(X, self.hidden)
+                outputs = outputs.view(y.shape)
                 loss = self.loss_fn(outputs, y)
             else:
                 # print(X.shape, y.shape)
                 # print("----------上面是TRAIN的hidden, X, y的shape---------")
-                outputs = self.net(X)
+                outputs = self.net(X).view(y.shape)
                 # print(X.shape, y.shape, outputs.shape)
                 loss = self.loss_fn(outputs, y)
             # 反向传播

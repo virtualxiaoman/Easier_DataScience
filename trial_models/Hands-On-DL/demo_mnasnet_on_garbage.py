@@ -1,3 +1,7 @@
+# © virtual小满 2024-09-24
+# 以下代码是在垃圾分类数据集上进行微调的示例代码
+# keywords: 多分类、数据转换、模型微调、预训练模型、迁移学习、MnasNet
+
 import os
 from PIL import Image
 import torch

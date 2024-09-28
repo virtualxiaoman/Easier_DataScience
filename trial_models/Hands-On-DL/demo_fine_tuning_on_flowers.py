@@ -1,6 +1,6 @@
 # © virtual小满 2024-09-23
 # 以下代码是在花朵数据集上进行微调的示例代码
-# keywords: 数据转换、模型微调、预训练模型、迁移学习、resnet152
+# keywords: 二分类、数据转换、模型微调、预训练模型、迁移学习、resnet152
 
 import os
 import torch
