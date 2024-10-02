@@ -232,8 +232,8 @@ class NetTrainer:
         self.y_train = self._target_reshape_1D(self.y_train)
         self.y_test = self._target_reshape_1D(self.y_test)
 
-        print(f"[init_loader] 训练集X, y的shape为{self.X_train.shape}, {self.y_train.shape}。"
-              f"测试集X, y的shape为{self.X_test.shape}, {self.y_test.shape}。")
+        print(f"[init_loader] 训练集X, y的shape为{tuple(self.X_train.shape)}, {tuple(self.y_train.shape)}。"
+              f"测试集X, y的shape为{tuple(self.X_test.shape)}, {tuple(self.y_test.shape)}。")  # tuple为了不输出torch.Size
 
     # [子函数]创建dataloader
     def create_dataloader(self, data, target, train=True):
@@ -265,7 +265,7 @@ class NetTrainer:
         """
         if hidden is not None:
             self.hidden = hidden
-        print(f"[train_net] 开始训练模型，总共epochs={self.epochs}，batch_size={self.batch_size}，"
+        print(f"[train_net] (^v^)开始训练模型，总共epochs={self.epochs}，batch_size={self.batch_size}，"
               f"当前设备为{self.device}，网络类型为{self.net_type}，评估类型为{self.eval_type}。")
         self.__check_best_net_save_path(net_save_path)
         self.current_gpu_memory = self._log_gpu_memory()
@@ -277,7 +277,7 @@ class NetTrainer:
             if epoch % self.eval_interval == 0:
                 self.log_and_update_eval_msg(epoch, net_save_path)
 
-        print(f"[train_net]训练结束，总共花费时间: {sum(self.time_list)}秒")
+        print(f"[train_net] (*^w^*) Congratulations！训练结束，总共花费时间: {sum(self.time_list)}秒")
         if self.eval_during_training:
             if self.eval_type == "loss":
                 print(f"[train_net] 最佳结果 epoch = {self.best_epoch + 1}, loss = {self.best_loss}")
