@@ -5,10 +5,41 @@ from torchvision.datasets import FashionMNIST
 import numpy as np
 import pandas as pd
 import re
+from torchvision import transforms
+from torch.utils.data import random_split, DataLoader
 
 from easier_excel.read_data import show_images
 from easier_excel.draw_data import plot_xy
 from easier_nn.load_data import trainset_to_dataloader, testset_to_dataloader
+
+
+# 数据转化
+class DataTransform:
+    def __init__(self):
+        self.data_transform = {
+            # 训练集数据增强、归一化
+            'train': transforms.Compose([
+                transforms.RandomResizedCrop((224, 224), scale=(0.1, 1), ratio=(0.5, 2)),  # 随机裁剪
+                transforms.RandomHorizontalFlip(),  # 左右翻转
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  # 均值方差归一化
+            ]),
+            # 验证集不增强，仅进行归一化
+            'val/test': transforms.Compose([
+                transforms.Resize((224, 224)),  # 缩放
+                transforms.ToTensor(),  # 转换为张量
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+        }
+
+    @staticmethod
+    def dataset_to_train_test_iter(dataset, train_rate, batch_size):
+        train_size = int(train_rate * len(dataset))
+        test_size = len(dataset) - train_size  # Subset，是torch.utils.data.Dataset的子类，用于划分数据集，不包含原始数据集的所有属性
+        train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+        return train_loader, test_loader
 
 
 def load_mnist(flatten=False, print_shape=False):
@@ -49,6 +80,7 @@ class fashion_mnist:
         fm.load_fashion_mnist()
         train_iter, test_iter = fm.load_dataiter()
     """
+
     def __init__(self):
         self.X_train = None
         self.X_test = None
@@ -100,7 +132,8 @@ class fashion_mnist:
     def get_fashion_mnist_labels(labels):
         """输入数值，返回文本标签：t‐shirt T恤、trouser裤子、pullover套衫、dress连衣裙、coat外套、sandal凉鞋、shirt衬衫、
         sneaker运动鞋、bag包、ankle boot短靴"""
-        text_labels = ['t-shirt', 'trouser', 'pullover', 'dress', 'coat', 'sandal', 'shirt', 'sneaker', 'bag', 'ankle boot']
+        text_labels = ['t-shirt', 'trouser', 'pullover', 'dress', 'coat', 'sandal', 'shirt', 'sneaker', 'bag',
+                       'ankle boot']
         return [text_labels[i] for i in labels]
 
 

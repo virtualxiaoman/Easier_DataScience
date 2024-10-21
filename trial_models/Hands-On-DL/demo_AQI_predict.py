@@ -1,3 +1,5 @@
+# 没看懂原作者写这个的意图是什么，感觉是一个简单的分类问题，但是作者写的代码有点乱
+
 import torch
 import torch.nn as nn
 import torch.utils.data as Data
@@ -11,7 +13,7 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 import os
 
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
 data = pd.read_csv("input/weather_data/weather.csv", encoding='gb18030')
 print(data)
 

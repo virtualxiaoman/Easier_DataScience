@@ -1,5 +1,29 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
+
+
+# LeNet5，输入为1*28*28的图像
+class LeNet5(nn.Module):
+    def __init__(self):  # 初始化函数
+        super(LeNet5, self).__init__()  # 多基层一般使用super
+        self.conv1 = nn.Conv2d(1, 6, 5)
+        self.pool1 = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.pool2 = nn.MaxPool2d(2, 2)
+        self.fc1 = nn.Linear(16 * 4 * 4, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+        self.drop = nn.Dropout(0.09)
+
+    def forward(self, x):
+        x = self.pool1(F.relu(self.conv1(x)))  # input(1,28,28),output1(6,24,24) output2(6,12,12)
+        x = self.pool2(F.relu(self.conv2(x)))  # input(6,12,12),output1(16,8,8) output2(16,4,4)
+        x = x.view(-1, 16 * 4 * 4)  # -1第一个维度
+        x = self.drop(F.relu(self.fc1(x)))  # 全连接层1及其激活函数
+        x = self.drop(F.relu(self.fc2(x)))  # 全连接层3得到输出
+        x = self.drop(self.fc3(x))
+        return x
 
 
 # ResNet，代码由GPT生成
@@ -30,6 +54,7 @@ class ResidualBlock(nn.Module):
 # ResNet，代码由GPT生成
 class ResNet(nn.Module):
     """net = ResNet(ResidualBlock, [2, 2, 2, 2], num_classes=10)  # ResNet18"""
+
     def __init__(self, block, layers, num_classes=10):
         super(ResNet, self).__init__()
         self.in_channels = 64

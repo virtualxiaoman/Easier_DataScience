@@ -11,6 +11,7 @@ from torchvision import transforms, datasets
 from torch.utils.data import random_split, DataLoader
 
 from easier_nn.train_net import NetTrainer
+from easier_nn.classic_dataset import DataTransform
 
 epochs = 30
 batch_size = 32
@@ -19,29 +20,16 @@ save_path = './model/demo/fine_tuning/garbage.pth'
 
 
 # 1. 数据转换
-data_transform = {
-    # 训练中的数据增强和归一化
-    'train': transforms.Compose([
-        transforms.RandomResizedCrop((224, 224), scale=(0.3, 1), ratio=(0.5, 2)),  # 随机裁剪
-        transforms.RandomHorizontalFlip(),  # 左右翻转
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  # 均值方差归一化
-    ]),
-    # 测试集的数据归一化
-    'test': transforms.Compose([
-        transforms.Resize((224, 224)),  # 缩放
-        transforms.ToTensor(),  # 转换为张量
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
-}
+data_transform = DataTransform().data_transform
 
 # 2.形成训练集和测试集 与 迭代器
 dataset = datasets.ImageFolder(root=os.path.join(image_path), transform=data_transform['train'])  # 1303
-train_size = int(0.8 * len(dataset))
-test_size = len(dataset) - train_size  # Subset，是torch.utils.data.Dataset的子类，用于划分数据集，不包含原始数据集的所有属性
-train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)  # 1042
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)  # 261
+train_iter, test_iter = DataTransform.dataset_to_train_test_iter(dataset, 0.8, batch_size)  # 1042, 261
+# train_size = int(0.8 * len(dataset))
+# test_size = len(dataset) - train_size  # Subset，是torch.utils.data.Dataset的子类，用于划分数据集，不包含原始数据集的所有属性
+# train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
+# train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)  # 1042
+# test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)  # 261
 
 
 # 3. 加载预训练好的MnasNet模型
@@ -55,7 +43,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
 # 4. 模型训练
-net_trainer = NetTrainer(train_loader, test_loader, model, criterion, optimizer, epochs=epochs, eval_type="acc",
+net_trainer = NetTrainer(train_iter, test_iter, model, criterion, optimizer, epochs=epochs, eval_type="acc",
                          batch_size=batch_size, eval_interval=1, eval_during_training=True)
 net_trainer.view_parameters(view_params_details=False)
 net_trainer.train_net(net_save_path=save_path)

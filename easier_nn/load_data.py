@@ -300,7 +300,7 @@ class TextRank:
         return keywords
 
 
-# 本文件下面三个函数最好不要再调用了(没什么问题，但是已经被集成到了train_net里面了)，但是由于历史遗留问题，现在还不能完全删除。
+# 本文件下面三个函数最好不要再调用了(没什么问题，但是已经被集成到了train_net里面了)，但是由于历史遗留问题，现在暂不删除。
 def load_array(data_arrays, batch_size=64, if_shuffle=True):
     """
     [底层函数] 构造一个PyTorch数据迭代器

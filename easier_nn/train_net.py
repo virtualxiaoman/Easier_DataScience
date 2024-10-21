@@ -265,7 +265,7 @@ class NetTrainer:
         """
         if hidden is not None:
             self.hidden = hidden
-        print(f"[train_net] (^v^)开始训练模型，总共epochs={self.epochs}，batch_size={self.batch_size}，"
+        print(f">>> [train_net] (^v^)开始训练模型，总共epochs={self.epochs}，batch_size={self.batch_size}，"
               f"当前设备为{self.device}，网络类型为{self.net_type}，评估类型为{self.eval_type}。")
         self.__check_best_net_save_path(net_save_path)
         self.current_gpu_memory = self._log_gpu_memory()
@@ -277,7 +277,7 @@ class NetTrainer:
             if epoch % self.eval_interval == 0:
                 self.log_and_update_eval_msg(epoch, net_save_path)
 
-        print(f"[train_net] (*^w^*) Congratulations！训练结束，总共花费时间: {sum(self.time_list)}秒")
+        print(f">>> [train_net] (*^w^*) Congratulations！训练结束，总共花费时间: {sum(self.time_list)}秒")
         if self.eval_during_training:
             if self.eval_type == "loss":
                 print(f"[train_net] 最佳结果 epoch = {self.best_epoch + 1}, loss = {self.best_loss}")
@@ -304,9 +304,10 @@ class NetTrainer:
                 outputs = outputs.view(y.shape)
                 loss = self.loss_fn(outputs, y)
             else:
-                # print(X.shape, y.shape)
-                # print("----------上面是TRAIN的hidden, X, y的shape---------")
-                outputs = self.net(X).view(y.shape)
+                # print(X.shape, y.shape, self.net(X).shape)
+                # print("----------上面是TRAIN的X, y, output的shape---------")
+                # outputs = self.net(X).view(y.shape)
+                outputs = self.net(X)
                 # print(X.shape, y.shape, outputs.shape)
                 loss = self.loss_fn(outputs, y)
             # 反向传播
@@ -534,16 +535,14 @@ class NetTrainer:
             for i in range(0, len(x), self.batch_size):
                 X_batch = x[i:i + self.batch_size].to(self.device)
                 y_batch = y[i:i + self.batch_size].to(self.device)
-                if len(X_batch) == 0:
-                    warnings.warn(f"[_cal_accuracy]最后一个batch的长度为0，理论上不会出现这个情况吧")
-                    continue
                 outputs = net(X_batch)
                 predictions = torch.argmax(outputs, dim=1)
+                # print(X_batch.shape, y_batch.shape, outputs.shape, predictions.shape)
                 correct += (predictions == y_batch).sum().item()
                 total += y_batch.size(0)
                 del X_batch, y_batch, outputs, predictions
                 torch.cuda.empty_cache()
-
+        # print(f"correct={correct}, total={total}")
         accuracy = correct / total
         return accuracy
 
@@ -709,10 +708,10 @@ class NetTrainer:
             elif save_type == "state_dict":
                 torch.save(self.net.state_dict(), net_save_path)
             else:
-                raise ValueError(f"[train_net] 保存类型save_type={save_type}不合法")
+                raise ValueError(f"> [train_net] 保存类型save_type={save_type}不合法")
             # print(f"[train_net] 已保存{save_type}模型到{net_save_path}")
         except Exception as e:
-            warnings.warn(f"[train_net] 保存模型失败，错误信息：{e}")
+            warnings.warn(f"> [train_net] 保存模型失败，错误信息：{e}")
     # 将原始数据转移到设备上，暂被弃用
     # def __original_dataset_to_device(self):
     #     # 暂时不知道只使用self.original_dataset_to_device是否会有问题，或许可以直接检查self.X_train.device(有问题再改吧)
