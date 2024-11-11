@@ -14,19 +14,19 @@ from easier_excel import read_data, cal_data, draw_data
 from easier_tools.Colorful_Console import ColoredText as CT
 from easier_tools.to_md import ToMd
 
-ToMd.path = "output/bilibili_RS/Bili_RS_3.md"  # 更改输出路径
+ToMd.path = "../output/bilibili_RS/Bili_RS_3.md"  # 更改输出路径
 ToMd = ToMd()
 ToMd.update_path()  # 这是更改path需要做的必要更新
 ToMd.clear_md()  # 清空前如有需要，务必备份
 
-model_path = "output/bilibili_RS/model"
+model_path = "../output/bilibili_RS/model"
 
 # 设置pandas显示选项
 read_data.set_pd_option(max_show=True, float_type=True, decimal_places=4)
 
 print(CT("----------读取数据----------").pink())
-path = "input/history_xm.xlsx"
-df_origin = read_data.read_df("input/history_xm.xlsx")
+path = "../input/history_xm.xlsx"
+df_origin = read_data.read_df("../input/history_xm.xlsx")
 
 print(CT("----------增加新列----------").pink())
 # view_percent这一列是以百分比形式展示的，需要转换为数值型数据

@@ -10,19 +10,19 @@ import pickle
 from easier_excel import read_data, cal_data, draw_data
 from easier_tools.Colorful_Console import ColoredText as CT
 from easier_tools.to_md import ToMd
-ToMd.path = "output/bilibili_RS/Bili_RS.md"  # 更改输出路径
+ToMd.path = "../output/bilibili_RS/Bili_RS.md"  # 更改输出路径
 ToMd = ToMd()
 ToMd.update_path()  # 这是更改path需要做的必要更新
 ToMd.clear_md()  # 清空前如有需要，务必备份，默认不清空
 
-model_path = "output/bilibili_RS/model"
+model_path = "../output/bilibili_RS/model"
 
 # 设置pandas显示选项
 read_data.set_pd_option(max_show=True, float_type=True, decimal_places=4)
 
 print(CT("----------读取数据----------").pink())
-path = "input/history_xm.xlsx"
-df_origin = read_data.read_df("input/history_xm.xlsx")
+path = "../input/history_xm.xlsx"
+df_origin = read_data.read_df("../input/history_xm.xlsx")
 
 print(CT("----------增加新列----------").pink())
 # view_percent这一列是以百分比形式展示的，需要转换为数值型数据
@@ -367,5 +367,5 @@ draw_df = draw_data.DrawDF(df_num)
 # feature_name_main = [col for col in df_num.columns if col not in ['u_like', 'u_coin', 'u_fav', 'u_score']]
 # DrawDF.draw_feature_importance(target_name='u_score', feature_name=feature_name_main,
 #                                 descending_draw=True, print_top=10)
-draw_df.draw_all_scatter(target_name='u_score', save_path='output/bilibili_RS/scatter_all')
+draw_df.draw_all_scatter(target_name='u_score', save_path='../output/bilibili_RS/scatter_all')
 

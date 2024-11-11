@@ -3,7 +3,7 @@ import numpy as np
 import mss
 
 
-def track_blue_object_on_screen():
+def track_blue_objects_on_screen():
     # 设置屏幕捕获区域，这里设置为全屏
     screen = mss.mss()
     monitor = screen.monitors[1]  # 选择主屏幕
@@ -19,9 +19,9 @@ def track_blue_object_on_screen():
         # 将帧转换为HSV颜色空间
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        # 设定蓝色的阈值，准确值是[[[120 255 255]]]
-        lower_blue = np.array([110, 50, 50])
-        upper_blue = np.array([130, 255, 255])
+        # 设定蓝色的阈值
+        lower_blue = np.array([100, 120, 70])
+        upper_blue = np.array([140, 255, 255])
 
         # 创建掩码
         mask = cv2.inRange(hsv, lower_blue, upper_blue)
@@ -35,12 +35,11 @@ def track_blue_object_on_screen():
 
         # 如果找到轮廓
         if contours:
-            # 找到最大的轮廓
-            largest_contour = max(contours, key=cv2.contourArea)
-            # 获取边界框
-            x, y, w, h = cv2.boundingRect(largest_contour)
-            # 在帧上绘制矩形框
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 10)
+            for contour in contours:
+                # 获取每个轮廓的边界框
+                x, y, w, h = cv2.boundingRect(contour)
+                # 在帧上绘制矩形框
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 10)
 
         # 将图像缩小以适应窗口显示
         resized_frame = cv2.resize(frame, (480, 300))  # 调整到你需要的大小
@@ -57,4 +56,4 @@ def track_blue_object_on_screen():
 
 
 # 调用函数
-track_blue_object_on_screen()
+track_blue_objects_on_screen()

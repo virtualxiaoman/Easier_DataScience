@@ -55,7 +55,7 @@ while cap.isOpened():
     # 创建掩码
     mask = cv2.inRange(hsv_frame, lower_skin, upper_skin)
     # 使用形态学闭运算填充空点
-    kernel = np.ones((5, 5), np.uint8)  # 创建5x5的卷积核
+    kernel = np.ones((3, 3), np.uint8)  # 创建5x5的卷积核
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     # 反转掩码
     mask_inv = cv2.bitwise_not(mask)
