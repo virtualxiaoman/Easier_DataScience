@@ -33,3 +33,8 @@ print(f'Huber Loss: {loss.item()}')
 
 loss = nn.HuberLoss(delta=0.2, reduction='none')(x, y)
 print(f'Huber Loss: {loss}')
+
+x = torch.tensor([[5, 2], [7, 9]])
+y = torch.tensor([[0.6, 0.4], [0.3, 0.5]])
+loss = nn.MSELoss()(x, y)
+print(f'MSE Loss: {loss.item()}')
