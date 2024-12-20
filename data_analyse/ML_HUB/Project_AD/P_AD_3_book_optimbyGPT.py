@@ -109,6 +109,17 @@ if __name__ == "__main__":
     train_input, val_input, train_target, val_target = train_test_split(
         combined_data, target_data, test_size=0.2, random_state=42
     )
+
+    print(f"Input data: {input_data['user_id'].shape, input_data['adgroup_id'].shape} ")  # ((524761,), (524761,))
+    # 输出train_input的shape
+    print(train_input.shape)  # (419808, 2)
+    # 查找train_input和val_input有没有相同的值的shape
+    print(train_input[train_input['user_id'].isin(val_input['user_id'])].shape)  # (289265, 2)
+    print(train_input[train_input['adgroup_id'].isin(val_input['adgroup_id'])].shape)  # (341164, 2)
+    # 查找train_input的(x, y)有没有和val_input的(x, y)相同的值
+    print(train_input[train_input['user_id'].isin(val_input['user_id']) &
+                      train_input['adgroup_id'].isin(val_input['adgroup_id'])].shape)  # (227251, 2)
+
     val_input = {
         'user_id': val_input['user_id'].values,
         'adgroup_id': val_input['adgroup_id'].values
