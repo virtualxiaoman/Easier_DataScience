@@ -2,6 +2,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, roc_auc_score
+from imblearn.over_sampling import SMOTE
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
@@ -10,7 +11,7 @@ import torch.optim as optim
 # 读取数据
 processed_data_path = "G:/DataSets/Ali_Display_Ad_Click/processed_data"
 ad_u_data = pd.read_csv(f'{processed_data_path}/ad_u_data.csv')
-# 选择前100000条数据
+# 选择前100000条数据，避免训练数据过长
 ad_u_data = ad_u_data.head(100000)
 
 # 选择有用的列
@@ -50,6 +51,20 @@ class AdClickDataset(Dataset):
         return self.user_ids[idx], self.adgroup_ids[idx], self.labels[idx]
 
 
+def oversample_data(train_data):
+    smote = SMOTE(sampling_strategy='minority', random_state=42)
+    X = train_data[['user_id', 'adgroup_id']].values
+    y = train_data['clk'].values
+    X_res, y_res = smote.fit_resample(X, y)
+
+    # 创建新的DataFrame并返回
+    resampled_data = pd.DataFrame(X_res, columns=['user_id', 'adgroup_id'])
+    resampled_data['clk'] = y_res
+    return resampled_data
+
+
+# train_data = oversample_data(train_data)
+# print(f"[log] 这里进行了过采样。Resampled train data shape: {train_data.shape}")
 train_dataset = AdClickDataset(train_data, user_encoder, adgroup_encoder)
 train_loader = DataLoader(train_dataset, batch_size=512, shuffle=True)
 
@@ -94,14 +109,15 @@ class NCFModel(nn.Module):
 
 # 初始化模型
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = NCFModel(num_users=train_dataset.num_users, num_ads=train_dataset.num_ads).to(device)
+# model = NCFModel(num_users=train_dataset.num_users, num_ads=train_dataset.num_ads).to(device)
+model = NCFModel(num_users=train_dataset.num_users, num_ads=train_dataset.num_ads, dropout=0.5).to(device)
 
 # 损失函数与优化器
 class_weights = torch.tensor([1.0, len(ad_u_data) / ad_u_data['clk'].sum()]).to(device)
 print(f"Class weights: {class_weights}")
 # criterion = nn.BCELoss(weight=class_weights)  # 不能直接加权重，因为BCE的输入是概率值
 criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights[1])  # 权重只作用于类别 1
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.0005, weight_decay=1e-5)
 
 
 # 训练并评估函数
@@ -189,7 +205,7 @@ def train_and_evaluate(model, train_loader, val_loader, criterion, optimizer, ep
 
 
 # 训练模型并评估
-val_preds, val_labels = train_and_evaluate(model, train_loader, val_loader, criterion, optimizer, epochs=10)
+val_preds, val_labels = train_and_evaluate(model, train_loader, val_loader, criterion, optimizer, epochs=30)
 
 
 # 测试
@@ -231,4 +247,3 @@ accuracy, auc, cr = evaluate_model(model, test_loader)
 print(f"Test Accuracy: {accuracy:.4f}, Test AUC: {auc:.4f}")
 print("\nClassification Report (Test):")
 print(cr)
-

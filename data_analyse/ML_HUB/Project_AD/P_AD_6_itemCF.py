@@ -153,12 +153,12 @@ def calculate_similarity(C, N):
     W = {}  # 广告的相似度矩阵
 
     # 遍历每个广告i
-    for i, item in C.items():
-        W.setdefault(i, {})
+    for ad_i, item in C.items():
+        W.setdefault(ad_i, {})
         # 遍历广告i的共现广告j
-        for j, count in item.items():
-            W[i].setdefault(j, 0)
-            W[i][j] = C[i][j] / sqrt(N[i] * N[j])  # 使用余弦相似度公式
+        for ad_j, count in item.items():
+            W[ad_i].setdefault(ad_j, 0)
+            W[ad_i][ad_j] = C[ad_i][ad_j] / sqrt(N[ad_i] * N[ad_j])  # 使用余弦相似度公式
 
     return W
 
