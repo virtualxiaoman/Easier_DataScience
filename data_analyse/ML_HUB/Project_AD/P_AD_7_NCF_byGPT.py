@@ -11,6 +11,7 @@ import torch.optim as optim
 # 读取数据
 processed_data_path = "G:/DataSets/Ali_Display_Ad_Click/processed_data"
 ad_u_data = pd.read_csv(f'{processed_data_path}/ad_u_data.csv')
+print(f"Data shape: {ad_u_data.shape}")
 # 选择前100000条数据，避免训练数据过长
 ad_u_data = ad_u_data.head(100000)
 
