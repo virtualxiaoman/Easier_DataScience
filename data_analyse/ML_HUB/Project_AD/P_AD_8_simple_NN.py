@@ -65,11 +65,11 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     X_0 = torch.tensor(X_train.values[0], dtype=torch.float).to(device)
     y_0 = torch.tensor(y_train.values[0], dtype=torch.float).to(device)
-    print(f"X0={X_0}, y0={y_0}, model(X0)={model(X_0)}")
+    # print(f"X0={X_0}, y0={y_0}, model(X0)={model(X_0)}")
     # exit(11)
 
     net_trainer = NetTrainerFNN(train_loader, test_loader, model, criterion, optimizer,
-                                epochs=10, eval_type="acc", eval_interval=1)
+                                epochs=20, eval_type="acc", eval_interval=1)
     net_trainer.train_net()
 
     # # 模型训练

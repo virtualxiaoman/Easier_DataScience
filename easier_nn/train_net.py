@@ -729,12 +729,11 @@ class NetTrainerFNN:
     """
 
     def __init__(self, train_loader, test_loader, net, loss_fn, optimizer,  # 必要参数，数据与网络的基本信息
-                 test_size=0.2, batch_size=64, epochs=100,  # 可选参数，用于训练
-                 eval_type="loss",  # 比较重要的参数，用于选择训练的类型（与评估指标有关）
+                 epochs=100,  # 可选参数，用于训练
+                 eval_type=None,  # 比较重要的参数，用于选择训练的类型（与评估指标有关）
                  eval_during_training=True,  # 可选参数，训练时是否进行评估（与显存、训练时间有关）
-                 # 补充：经过优化，目前即使训练时评估也不需要额外太多的显存了
                  eval_interval=10,  # 其他参数，训练时的评估间隔
-                 device=None,  # 其他参数，设备选择
+                 device=None,  # 其他参数，设备选择，默认优先cuda
                  **kwargs):
         """
         初始化模型。
@@ -772,7 +771,7 @@ class NetTrainerFNN:
         # 数据参数
         self.train_loader = train_loader  # train_loader
         self.test_loader = test_loader  # test_loader
-        self.test_size = test_size
+        # self.test_size = test_size
         # self.X_train, self.X_test, self.y_train, self.y_test = None, None, None, None
         # self.train_loader, self.test_loader = None, None
 
@@ -784,7 +783,7 @@ class NetTrainerFNN:
         self.optimizer = optimizer
 
         # 训练参数
-        self.batch_size = batch_size
+        # self.batch_size = batch_size
         self.epochs = epochs
 
         # 训练输出参数
@@ -797,6 +796,7 @@ class NetTrainerFNN:
 
         # 使用loss还是acc参数
         self.eval_type = eval_type
+        self._init_eval_type()
 
         # 当前训练epoch的各种参数
         self.loss_epoch = None  # 每个epoch的loss
@@ -810,6 +810,59 @@ class NetTrainerFNN:
         self.best_acc = None  # 最佳acc
         self.auto_save_best_net = False  # 是否自动保存最佳模型
 
+        self.log_X_y()  # 打印数据信息
+
+    def _init_eval_type(self):
+        """
+        初始化 eval_type，根据 loss_fn 动态判断任务类型。
+        """
+        # 定义支持的回归和分类损失函数
+        regression_losses = (
+            nn.MSELoss,  # 均方误差，用于回归任务
+            nn.L1Loss,  # L1 损失（绝对误差），用于回归任务
+            nn.SmoothL1Loss,  # 平滑 L1 损失（Huber 损失），用于回归任务
+            nn.HuberLoss,  # Huber 损失，用于稳健回归
+            nn.PoissonNLLLoss  # 泊松负对数似然，用于回归（例如计数数据）
+        )
+
+        classification_losses = (
+            nn.CrossEntropyLoss,  # 多分类任务
+            nn.NLLLoss,  # 负对数似然，多分类任务
+            nn.BCEWithLogitsLoss,  # 二分类（带 logits 的 BCE）
+            nn.BCELoss,  # 二分类（输入为概率）
+            nn.HingeEmbeddingLoss,  # 用于二分类和嵌入任务
+            nn.MarginRankingLoss,  # 用于学习排序
+            nn.MultiLabelSoftMarginLoss  # 多标签分类
+        )
+
+        if self.eval_type is None:
+            # 判断 loss_fn 的类型
+            if isinstance(self.loss_fn, regression_losses):
+                self.eval_type = "loss"  # 回归任务，用 loss 评估
+                print(f"[__init__] 根据loss_fn检测到目前为回归任务，eval_type={self.eval_type}")
+            elif isinstance(self.loss_fn, classification_losses):
+                self.eval_type = "acc"  # 分类任务，用 acc 评估
+                print(f"[__init__] 根据loss_fn检测到目前为分类任务，eval_type={self.eval_type}")
+            else:
+                raise ValueError(f"[__init__] 未知的任务类型，请手动设置eval_type参数")
+        elif self.eval_type not in ["loss", "acc"]:
+            raise ValueError(f"[__init__] eval_type参数只能是 'loss' 或 'acc' ")
+        else:
+            print(f"[__init__] eval_type={self.eval_type}")
+
+    def log_X_y(self):
+        """
+        输出第一批次的X, y, outputs的shape
+        """
+        X, y = next(iter(self.train_loader))
+        X, y = X.to(self.device), y.to(self.device)
+        outputs = self.net(X)
+        print(f"[log_X_y] 第一批次的shape如下：\n"
+              f"          X: {X.shape}, y: {y.shape}, outputs: {outputs.shape}")
+        if (len(outputs.shape) == 1 or outputs.shape[1] == 1) and self.eval_type == "acc":
+            print(f"[log_X_y] 请注意：outputs的维度为{outputs.shape}，在计算acc的时候使用的是"
+                  f"predictions = (torch.sigmoid(outputs).view(-1) > 0.5).long()")
+
     # [主函数]训练模型
     def train_net(self, net_save_path: str = None) -> None:
         """
@@ -818,7 +871,7 @@ class NetTrainerFNN:
             暂不支持选择state_dict的保存除非改代码，只支持整个模型的保存（因为我平时不怎么用state_dict阿巴阿巴）
         :return: None
         """
-        print(f">>> [train_net] (^v^)开始训练模型，参数epochs={self.epochs}，batch_size={self.batch_size}，"
+        print(f">>> [train_net] (^v^)开始训练模型，参数epochs={self.epochs}"
               f"当前设备为{self.device}，网络类型为{self.net_type}，评估类型为{self.eval_type}。")
         self.__check_best_net_save_path(net_save_path)
         self.current_gpu_memory = self._log_gpu_memory()
@@ -894,7 +947,7 @@ class NetTrainerFNN:
         else:
             raise ValueError("eval_type must be 'loss' or 'acc'")
 
-    # [主函数]评估模型(暂不支持RNN的评估)
+    # [主函数]评估模型
     def evaluate_net(self, eval_type: str = "test") -> float | str:
         """
         评估模型
@@ -913,21 +966,11 @@ class NetTrainerFNN:
         self.net.eval()  # 确保评估时不使用dropout等
         with torch.no_grad():  # 在评估时禁用梯度计算，节省内存
             if self.eval_type == "loss":
-                # if self.net_type == "RNN":
-                #     if eval_type == "test":
-                #         output = self._cal_rnn_output(self.net, self.X_test[0], self.hidden[:, -1], len(self.y_test))
-                #         loss = self.loss_fn(output, self.y_test).item()
-                #     else:
-                #         # 事实上一般不调用这个，因为训练集的loss在训练时已经计算了
-                #         output = self._cal_rnn_output(self.net, self.X_train[0], self.hidden[:, 0], len(self.y_train))
-                #         loss = self.loss_fn(output, self.y_train).item()
                 if eval_type == "test":
                     loss = self._cal_fnn_loss(data_type="test")
-                    # loss = self.loss_fn(self.net(self.X_test), self.y_test).item()
                 else:
                     # 事实上一般不调用这个，因为训练集的loss在训练时已经计算了
                     loss = self._cal_fnn_loss(data_type="train")
-                    # loss = self.loss_fn(self.net(self.X_train), self.y_train).item()
                 return loss
             elif self.eval_type == "acc":
                 if eval_type == "test":
@@ -1028,7 +1071,14 @@ class NetTrainerFNN:
 
                 # 前向传播计算输出并获取预测类别
                 outputs = self.net(inputs)
-                predictions = torch.argmax(outputs, dim=1)  # 获取预测类别
+                # 根据输出 shape 判断问题类型
+                if len(outputs.shape) == 1 or outputs.shape[1] == 1:  # 二分类问题
+                    # 对 logits 应用 sigmoid 并将概率转化为类别标签
+                    predictions = (torch.sigmoid(outputs).view(-1) > 0.5).long()
+                else:  # 多分类
+                    # 获取预测类别
+                    predictions = torch.argmax(outputs, dim=1)
+                # predictions = torch.argmax(outputs, dim=1)  # 获取预测类别
                 # print(f"shape: {predictions.shape} --- {targets.shape}")
                 # # print(predictions)
                 # # print(targets)

@@ -6,15 +6,20 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from easier_nn.train_net import NetTrainerFNN
 
-print("这是二分类测试代码")
-# 生成分类数据
+print("这是多分类测试代码")
+# 生成多分类数据
 np.random.seed(42)
 data = np.random.rand(1000, 20)  # 20个特征
-target = (np.sum(data, axis=1) > 10).astype(int)  # 如果特征和大于10，则类别为1，否则为0
+target = np.sum(data, axis=1)  # 计算特征和
 
-# 将data和target划分训练集和测试集
+# 根据特征和划分为4个类别
+bins = [0, 5, 10, 15, np.inf]
+target = np.digitize(target, bins) - 1  # 将类别映射为0-3
+
+# 转换为torch tensor
 data = torch.tensor(data, dtype=torch.float)
 target = torch.tensor(target, dtype=torch.long)
+
 # 划分为训练集和测试集
 data_train, data_test, target_train, target_test = train_test_split(data, target, test_size=0.2)
 
@@ -25,11 +30,11 @@ train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 
-class ClassificationNet(nn.Module):
+class MultiClassificationNet(nn.Module):
     def __init__(self):
-        super(ClassificationNet, self).__init__()
+        super(MultiClassificationNet, self).__init__()
         self.fc1 = nn.Linear(20, 50)
-        self.fc2 = nn.Linear(50, 2)  # 2个类别
+        self.fc2 = nn.Linear(50, 4)  # 4个类别
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -37,7 +42,8 @@ class ClassificationNet(nn.Module):
         return x
 
 
-net = ClassificationNet()
+# 定义模型、损失函数和优化器
+net = MultiClassificationNet()
 loss_fn = nn.CrossEntropyLoss()
 optimizer = optim.Adam(net.parameters(), lr=0.001)
 
