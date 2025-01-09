@@ -4,7 +4,7 @@ import torch.optim as optim
 from data_analyse.ML_HUB.Project_AD.P_AD_utils import load_data, train_model, evaluate_model
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from easier_nn.train_net import NetTrainer
+from easier_nn.train_net import NetTrainerFNN
 
 
 # 定义简单神经网络模型
@@ -21,7 +21,7 @@ class SimpleNN(nn.Module):
         )
 
     def forward(self, x):
-        return self.fc_layers(x)
+        return self.fc_layers(x).view(-1)
 
 
 # 主函数
@@ -68,11 +68,12 @@ if __name__ == "__main__":
     print(f"X0={X_0}, y0={y_0}, model(X0)={model(X_0)}")
     # exit(11)
 
-    # net_trainer = NetTrainer(train_loader, test_loader, model, criterion, optimizer, epochs=10, eval_type="acc")
-    # net_trainer.train_net()
+    net_trainer = NetTrainerFNN(train_loader, test_loader, model, criterion, optimizer,
+                                epochs=10, eval_type="acc", eval_interval=1)
+    net_trainer.train_net()
 
-    # 模型训练
-    train_model(model, train_loader, test_loader, optimizer, criterion, epochs=1)
-
-    # 模型评测
-    evaluate_model(model, test_loader)
+    # # 模型训练
+    # train_model(model, train_loader, test_loader, optimizer, criterion, epochs=1)
+    #
+    # # 模型评测
+    # evaluate_model(model, test_loader)

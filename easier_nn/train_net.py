@@ -92,15 +92,15 @@ class NetTrainer:
     """
 
     def __init__(self, data, target, net, loss_fn, optimizer,  # 必要参数，数据与网络的基本信息
-                 test_size=0.2, batch_size=64, epochs=100,     # 可选参数，用于训练
-                 eval_type="loss",                             # 比较重要的参数，用于选择训练的类型（与评估指标有关）
-                 eval_during_training=True,                    # 可选参数，训练时是否进行评估（与显存有关）
-                                                               # 补充：经过优化，目前即使训练时评估也不需要额外太多的显存了
+                 test_size=0.2, batch_size=64, epochs=100,  # 可选参数，用于训练
+                 eval_type="loss",  # 比较重要的参数，用于选择训练的类型（与评估指标有关）
+                 eval_during_training=True,  # 可选参数，训练时是否进行评估（与显存有关）
+                 # 补充：经过优化，目前即使训练时评估也不需要额外太多的显存了
                  rnn_input_size=None, rnn_seq_len=None, rnn_hidden_size=None,  # 可选参数，当net是RNN类型时需要传入这些参数
                  # Bug：对RNN的train,test划分不太行，建议传入tuple
                  # batch_size不是1的时候测试集的损失会有问题
-                 eval_interval=20,                             # 其他参数，训练时的评估间隔
-                 device=None,                                  # 其他参数，设备选择
+                 eval_interval=20,  # 其他参数，训练时的评估间隔
+                 device=None,  # 其他参数，设备选择
                  **kwargs):
         """
         初始化模型。
@@ -729,12 +729,12 @@ class NetTrainerFNN:
     """
 
     def __init__(self, train_loader, test_loader, net, loss_fn, optimizer,  # 必要参数，数据与网络的基本信息
-                 test_size=0.2, batch_size=64, epochs=100,     # 可选参数，用于训练
-                 eval_type="loss",                             # 比较重要的参数，用于选择训练的类型（与评估指标有关）
-                 eval_during_training=True,                    # 可选参数，训练时是否进行评估（与显存、训练时间有关）
-                                                               # 补充：经过优化，目前即使训练时评估也不需要额外太多的显存了
-                 eval_interval=20,                             # 其他参数，训练时的评估间隔
-                 device=None,                                  # 其他参数，设备选择
+                 test_size=0.2, batch_size=64, epochs=100,  # 可选参数，用于训练
+                 eval_type="loss",  # 比较重要的参数，用于选择训练的类型（与评估指标有关）
+                 eval_during_training=True,  # 可选参数，训练时是否进行评估（与显存、训练时间有关）
+                 # 补充：经过优化，目前即使训练时评估也不需要额外太多的显存了
+                 eval_interval=10,  # 其他参数，训练时的评估间隔
+                 device=None,  # 其他参数，设备选择
                  **kwargs):
         """
         初始化模型。
@@ -809,73 +809,6 @@ class NetTrainerFNN:
         self.best_loss = None  # 最佳loss
         self.best_acc = None  # 最佳acc
         self.auto_save_best_net = False  # 是否自动保存最佳模型
-
-        # # 初始化
-        # self.init_loader()
-
-    # # [init]初始化训练数据
-    # def init_loader(self):
-    #     # 如果传入的是DataLoader实例，则直接赋值
-    #     if isinstance(self.train_iter, DataLoader) and isinstance(self.valid_iter, DataLoader):
-    #         self.train_loader = self.train_iter
-    #         self.test_loader = self.valid_iter
-    #         print("[init_loader] 传入的data与target是DataLoader实例，直接赋值train_loader和test_loader。")
-    #         # 从DataLoader中获取数据
-    #         self.X_train, self.y_train = self._dataloader_to_tensor(self.train_loader)
-    #         self.X_test, self.y_test = self._dataloader_to_tensor(self.test_loader)
-    #     else:
-    #         # 如果传入的就是tuple，则表示已经划分好了训练集和测试集
-    #         if isinstance(self.train_iter, tuple) and isinstance(self.valid_iter, tuple):
-    #             self.X_train, self.X_test = self.train_iter
-    #             self.y_train, self.y_test = self.valid_iter
-    #             print("[init_loader] 因为传入的data与target是元组，所以默认已经划分好了训练集和测试集。"
-    #                   "默认元组第一个是train，第二个为test。")
-    #         # 否则，需要划分训练集和测试集
-    #         else:
-    #             if self.train_iter.shape[0] != self.valid_iter.shape[0]:
-    #                 raise ValueError(f"data和target的shape[0](样本数)不相同: "
-    #                                  f"data({self.train_iter.shape[0]}) and target({self.valid_iter.shape[0]}).")
-    #             self.X_train, self.X_test, self.y_train, self.y_test = \
-    #                 train_test_split(self.train_iter, self.valid_iter, test_size=self.test_size)
-    #             print(f"[init_loader] 传入的data与target是X, y，则按照test_size={self.test_size}划分训练集和测试集")
-    #
-    #         # if self.net_type == "RNN":
-    #         #     self.X_train, self.y_train = self._prepare_rnn_data(self.X_train, self.y_train)
-    #         #     self.X_test, self.y_test = self._prepare_rnn_data(self.X_test, self.y_test)
-    #         #     print(f"[init_loader]RNN数据准备完毕，seq_len={self.rnn_seq_len}, hidden_size={self.rnn_hidden_size}")
-    #
-    #         # 创建DataLoaders
-    #         self.train_loader = self.create_dataloader(self.X_train, self.y_train)
-    #         self.test_loader = self.create_dataloader(self.X_test, self.y_test, train=False)
-    #     # # 将数据变成tensor，并且dtype依据data的类型而定
-    #     # self.X_train = self._dataframe_to_tensor(self.X_train)
-    #     # self.X_test = self._dataframe_to_tensor(self.X_test)
-    #     # self.y_train = self._dataframe_to_tensor(self.y_train)
-    #     # self.y_test = self._dataframe_to_tensor(self.y_test)
-    #     # self.y_train = self._target_reshape_1D(self.y_train)
-    #     # self.y_test = self._target_reshape_1D(self.y_test)
-    #
-    #     print(f"[init_loader] 训练集X, y的shape为{tuple(self.X_train.shape)}, {tuple(self.y_train.shape)}。"
-    #           f"测试集X, y的shape为{tuple(self.X_test.shape)}, {tuple(self.y_test.shape)}。")  # tuple为了不输出torch.Size
-
-    # [子函数]创建dataloader
-    # def create_dataloader(self, data, target, train=True):
-    #     # dtype依据data的类型而定
-    #     data = self._dataframe_to_tensor(data)
-    #     target = self._dataframe_to_tensor(target)
-    #     target = self._target_reshape_1D(target)
-    #
-    #     # print(target)
-    #     dataset = TensorDataset(data, target)
-    #     if train:
-    #         # todo 本处对RNN的处理应该有问题
-    #         if self.net_type == "RNN":
-    #             warnings.warn("此处代码暂未修正，对于RNN，建议使用train_loader和test_loader直接传入DataLoader实例。")
-    #             return DataLoader(dataset, batch_size=self.batch_size, shuffle=False, drop_last=self.drop_last)
-    #         else:
-    #             return DataLoader(dataset, batch_size=self.batch_size, shuffle=True, drop_last=self.drop_last)
-    #     else:
-    #         return DataLoader(dataset, batch_size=self.batch_size, shuffle=False, drop_last=self.drop_last)
 
     # [主函数]训练模型
     def train_net(self, net_save_path: str = None) -> None:
@@ -966,7 +899,6 @@ class NetTrainerFNN:
         """
         评估模型
         :param eval_type: 评估类型，支持"test"和"train"
-        :param delete_train: delete_train=True表示删除训练集，只保留测试集，这样可以释放显存
         :return: 损失或准确率，依据self.net_type而定；在不评估时返回self.NO_EVAL_MSG(默认为'"No eval"')
         """
         # if delete_train:
@@ -990,22 +922,22 @@ class NetTrainerFNN:
                 #         output = self._cal_rnn_output(self.net, self.X_train[0], self.hidden[:, 0], len(self.y_train))
                 #         loss = self.loss_fn(output, self.y_train).item()
                 if eval_type == "test":
-                    loss = self._cal_fnn_loss(self.net, self.loss_fn, self.X_test, self.y_test)
+                    loss = self._cal_fnn_loss(data_type="test")
                     # loss = self.loss_fn(self.net(self.X_test), self.y_test).item()
                 else:
                     # 事实上一般不调用这个，因为训练集的loss在训练时已经计算了
-                    loss = self._cal_fnn_loss(self.net, self.loss_fn, self.X_train, self.y_train)
+                    loss = self._cal_fnn_loss(data_type="train")
                     # loss = self.loss_fn(self.net(self.X_train), self.y_train).item()
                 return loss
             elif self.eval_type == "acc":
                 if eval_type == "test":
-                    acc = self._cal_fnn_acc(self.net, self.X_test, self.y_test)
+                    acc = self._cal_fnn_acc(data_type="test")
                     # predictions = torch.argmax(self.net(self.X_test), dim=1).type(self.y_test.dtype)
                     # correct = (predictions == self.y_test).sum().item()
                     # n = self.y_test.numel()
                     # acc = correct / n
                 else:
-                    acc = self._cal_fnn_acc(self.net, self.X_train, self.y_train)
+                    acc = self._cal_fnn_acc(data_type="train")
                     # predictions = torch.argmax(self.net(self.X_train), dim=1).type(self.y_train.dtype)
                     # correct = (predictions == self.y_train).sum().item()
                     # n = self.y_train.numel()
@@ -1051,58 +983,107 @@ class NetTrainerFNN:
         #     k = k + l
         # print("总参数数量和：" + str(k))
 
-    # [子函数]评估FNN的loss todo 重构
-    def _cal_fnn_loss(self, net, criterion, x, y):
-        net.eval()
+    # [子函数]评估FNN的loss
+    def _cal_fnn_loss(self, data_type="test"):
+        """计算指定数据集的平均损失。"""
+        self.net.eval()  # 设置模型为评估模式
+
+        # 根据数据类型选择对应的数据加载器
+        loader = self.train_loader if data_type == "train" else self.test_loader
+
         total_loss = 0.0
+        num_samples = 0
 
-        with torch.no_grad():
-            for i in range(0, len(x), self.batch_size):
-                X_batch = x[i:i + self.batch_size].to(self.device)
-                y_batch = y[i:i + self.batch_size].to(self.device)
-                if len(X_batch) == 0:
-                    warnings.warn(f"[_cal_fn_loss]最后一个batch的长度为0，理论上不会出现这个情况吧")
-                    continue
-                outputs = net(X_batch)
-                loss = criterion(outputs, y_batch)
-                total_loss += loss.item() * y_batch.size(0)
-                del X_batch, y_batch, outputs, loss
-                torch.cuda.empty_cache()
+        with torch.no_grad():  # 禁用梯度计算
+            for inputs, targets in loader:
+                # 将数据移动到模型所在设备
+                inputs, targets = inputs.to(self.device), targets.to(self.device)
 
-        average_loss = total_loss / len(x)
-        return average_loss
+                # 前向传播计算输出和损失
+                outputs = self.net(inputs)
+                loss = self.loss_fn(outputs, targets)
 
-    # [子函数]评估FNN的acc
-    def _cal_fnn_acc(self, net, x, y):
-        net.eval()
-        correct = 0
-        total = 0
+                # 累加损失和样本数
+                batch_size = inputs.size(0)
+                total_loss += loss.item() * batch_size
+                num_samples += batch_size
 
-        with torch.no_grad():
-            for i in range(0, len(x), self.batch_size):
-                X_batch = x[i:i + self.batch_size].to(self.device)
-                y_batch = y[i:i + self.batch_size].to(self.device)
-                outputs = net(X_batch)
-                predictions = torch.argmax(outputs, dim=1)
-                # print(X_batch.shape, y_batch.shape, outputs.shape, predictions.shape)
-                correct += (predictions == y_batch).sum().item()
-                total += y_batch.size(0)
-                del X_batch, y_batch, outputs, predictions
-                torch.cuda.empty_cache()
-        # print(f"correct={correct}, total={total}")
-        accuracy = correct / total
-        return accuracy
+        # 返回平均损失
+        return total_loss / num_samples
 
-    # # [子函数]准备RNN数据
-    # def _prepare_rnn_data(self, data, target):
-    #     seq_len = self.rnn_seq_len
-    #     data_len = len(data)
-    #     num_sequences = data_len // (seq_len + 1) * (seq_len + 1)
-    #     data = np.array(data[:num_sequences]).reshape((-1, seq_len + 1, 1))
-    #     target = np.array(target[:num_sequences]).reshape((-1, seq_len + 1, 1))
-    #     return data[:, :seq_len], data[:, 1:seq_len + 1]
+    def _cal_fnn_acc(self, data_type="test"):
+        """计算指定数据集的准确率。"""
+        self.net.eval()  # 设置模型为评估模式
 
-    # 将df转换为tensor，并保持数据类型的一致性
+        # 根据数据类型选择对应的数据加载器
+        loader = self.train_loader if data_type == "train" else self.test_loader
+
+        correct_predictions = 0
+        num_samples = 0
+
+        with torch.no_grad():  # 禁用梯度计算
+            for inputs, targets in loader:
+                # 将数据移动到模型所在设备
+                inputs, targets = inputs.to(self.device), targets.to(self.device)
+
+                # 前向传播计算输出并获取预测类别
+                outputs = self.net(inputs)
+                predictions = torch.argmax(outputs, dim=1)  # 获取预测类别
+                # print(f"shape: {predictions.shape} --- {targets.shape}")
+                # # print(predictions)
+                # # print(targets)
+                # # exit(1)
+
+                # 统计正确预测的样本数和总样本数
+                correct_predictions += (predictions == targets).sum().item()
+                num_samples += targets.size(0)
+                # print(targets.size(0))
+                # print(f"correct_predictions={correct_predictions}, num_samples={num_samples}")
+
+        # 返回准确率
+        # print(f">> correct_predictions={correct_predictions}, num_samples={num_samples}")
+        return correct_predictions / num_samples
+
+    # def _cal_fnn_loss(self, data_type="test"):
+    #     self.net.eval()
+    #     total_loss = 0.0
+    #
+    #     with torch.no_grad():
+    #         for i in range(0, len(x), self.batch_size):
+    #             X_batch = x[i:i + self.batch_size].to(self.device)
+    #             y_batch = y[i:i + self.batch_size].to(self.device)
+    #             if len(X_batch) == 0:
+    #                 warnings.warn(f"[_cal_fn_loss]最后一个batch的长度为0，理论上不会出现这个情况吧")
+    #                 continue
+    #             outputs = net(X_batch)
+    #             loss = criterion(outputs, y_batch)
+    #             total_loss += loss.item() * y_batch.size(0)
+    #             del X_batch, y_batch, outputs, loss
+    #             torch.cuda.empty_cache()
+    #
+    #     average_loss = total_loss / len(x)
+    #     return average_loss
+    #
+    # # [子函数]评估FNN的acc
+    # def _cal_fnn_acc(self, data_type="test"):
+    #     net.eval()
+    #     correct = 0
+    #     total = 0
+    #
+    #     with torch.no_grad():
+    #         for i in range(0, len(x), self.batch_size):
+    #             X_batch = x[i:i + self.batch_size].to(self.device)
+    #             y_batch = y[i:i + self.batch_size].to(self.device)
+    #             outputs = net(X_batch)
+    #             predictions = torch.argmax(outputs, dim=1)
+    #             # print(X_batch.shape, y_batch.shape, outputs.shape, predictions.shape)
+    #             correct += (predictions == y_batch).sum().item()
+    #             total += y_batch.size(0)
+    #             del X_batch, y_batch, outputs, predictions
+    #             torch.cuda.empty_cache()
+    #     # print(f"correct={correct}, total={total}")
+    #     accuracy = correct / total
+    #     return accuracy
 
     # [log函数]打印GPU显存
     def _log_gpu_memory(self):
@@ -1133,8 +1114,9 @@ class NetTrainerFNN:
         used_memory_gb = used_memory / (1024 ** 3)  # 已用显存（GB）
         reserved_memory_gb = reserved_memory / (1024 ** 3)  # 保留显存（GB）
         total_memory_gb = total_memory / (1024 ** 3)  # 总显存（GB）
-        log += (f"设备{current_device_index}的显存："
-                f"已用{used_memory_gb:.2f}+保留{reserved_memory_gb:.2f}/总{total_memory_gb:.2f}(GB)")
+        # U: used已用, R: reserved保留, T: total总
+        log += (f"设备{current_device_index}："
+                f"U{used_memory_gb:.2f}+R{reserved_memory_gb:.2f}/T{total_memory_gb:.2f}GB")
 
         return log
 
@@ -1219,6 +1201,9 @@ class NetTrainerFNN:
                         warnings.warn(f"[train_net] 最佳模型保存文件夹dir_path='{dir_path}'创建失败，错误信息：{e}")
                 if not net_save_path.endswith(".pth"):
                     print(f"[train_net] 请注意net_save_path='{net_save_path}'未以'.pth'结尾")
+        if net_save_path is None:
+            self.auto_save_best_net = False
+            print("[train_net] 未设置net_save_path，auto_save_best_net已设置为False")
         else:
             self.auto_save_best_net = False
             warnings.warn(f"[train_net] 请注意net_save_path={net_save_path}不是str类型，auto_save_best_net已设置为False")
@@ -1243,7 +1228,6 @@ class NetTrainerFNN:
     #         self.X_train, self.X_test, self.y_train, self.y_test = self.X_train.to(self.device), self.X_test.to(
     #             self.device), self.y_train.to(self.device), self.y_test.to(self.device)
     #         self.original_dataset_to_device = True
-
 
 
 # GRU可以参考下面的代码，结果很好，等有空再将RNN这种网络的训练合并到NetTrainer中

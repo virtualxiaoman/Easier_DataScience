@@ -10,10 +10,10 @@ import numpy as np
 # 数据加载与转换函数
 def load_data(X_train, y_train, X_test, y_test, batch_size=64):
     X_train_tensor = torch.tensor(X_train.values, dtype=torch.float)
-    y_train_tensor = torch.tensor(y_train.values, dtype=torch.float).view(-1, 1)
+    y_train_tensor = torch.tensor(y_train.values, dtype=torch.float).view(-1)
 
     X_test_tensor = torch.tensor(X_test.values, dtype=torch.float)
-    y_test_tensor = torch.tensor(y_test.values, dtype=torch.float).view(-1, 1)
+    y_test_tensor = torch.tensor(y_test.values, dtype=torch.float).view(-1)
 
     train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
