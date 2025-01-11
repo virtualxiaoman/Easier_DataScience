@@ -1,8 +1,8 @@
 from torch import nn
 import torch
+from torch.utils.data import DataLoader, TensorDataset
 from easier_nn.classic_dataset import fashion_mnist
-from easier_nn.train_net import NetTrainer
-
+from easier_nn.train_net import NetTrainerFNN
 
 fm = fashion_mnist()
 fm.load_fashion_mnist(flatten=False)
@@ -22,7 +22,16 @@ net = nn.Sequential(
 loss = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
 
-trainer = NetTrainer((fm.X_train, fm.X_test), (fm.y_train, fm.y_test), net, loss, optimizer,
-                     batch_size=batch_size, epochs=num_epochs, eval_type="acc", eval_interval=1)
-trainer.train_net()
+# trainer = NetTrainer((fm.X_train, fm.X_test), (fm.y_train, fm.y_test), net, loss, optimizer,
+#                      batch_size=batch_size, epochs=num_epochs, eval_type="acc", eval_interval=1)
+# trainer.train_net()
 
+# 将数据转化为DataLoader
+train_dataset = TensorDataset(fm.X_train, fm.y_train)
+test_dataset = TensorDataset(fm.X_test, fm.y_test)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+trainer = NetTrainerFNN(train_loader, test_loader, net, loss, optimizer,
+                        epochs=num_epochs, eval_type="acc", eval_interval=1)
+trainer.train_net()

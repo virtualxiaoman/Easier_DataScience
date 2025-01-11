@@ -7,21 +7,29 @@ from sklearn.model_selection import train_test_split
 from easier_nn.train_net import NetTrainerFNN
 
 
-# 定义简单神经网络模型
-class SimpleNN(nn.Module):
+# 定义Wide&Deep模型
+class WideDeepNN(nn.Module):
     def __init__(self, input_dim):
-        super(SimpleNN, self).__init__()
-        self.fc_layers = nn.Sequential(
+        super(WideDeepNN, self).__init__()
+
+        # Wide部分：线性模型
+        self.wide_layer = nn.Linear(input_dim, 1)
+
+        # Deep部分：深度神经网络
+        self.deep_layers = nn.Sequential(
             nn.Linear(input_dim, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 1),
-            # nn.Sigmoid()
+            nn.Linear(64, 1)
         )
 
     def forward(self, x):
-        return self.fc_layers(x).view(-1)
+        # 假设wide_input和deep_input都用相同的特征
+        wide_output = self.wide_layer(x)
+        deep_output = self.deep_layers(x)
+        return (wide_output + deep_output).view(-1)
+
 
 
 # 主函数
@@ -57,16 +65,12 @@ if __name__ == "__main__":
     # 定义模型
     device = "cuda" if torch.cuda.is_available() else "cpu"
     input_dim = X_train.shape[1]
-    model = SimpleNN(input_dim).to(device)
+    model = WideDeepNN(input_dim).to(device)
     class_weights = torch.tensor([1.0, len(ad_u_data) / ad_u_data['clk'].sum()]).to(device)
     print(f"Class weights: {class_weights}")
     # criterion = nn.BCELoss(weight=class_weights)  # 不能直接加权重，因为BCE的输入是概率值
     criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights[1])  # 权重只作用于类别 1
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    X_0 = torch.tensor(X_train.values[0], dtype=torch.float).to(device)
-    y_0 = torch.tensor(y_train.values[0], dtype=torch.float).to(device)
-    # print(f"X0={X_0}, y0={y_0}, model(X0)={model(X_0)}")
-    # exit(11)
 
     net_trainer = NetTrainerFNN(train_loader, test_loader, model, criterion, optimizer,
                                 epochs=20, eval_type="acc", eval_interval=1)

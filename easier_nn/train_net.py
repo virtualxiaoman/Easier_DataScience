@@ -852,16 +852,19 @@ class NetTrainerFNN:
 
     def log_X_y(self):
         """
-        输出第一批次的X, y, outputs的shape
+        输出第一批次的X, y, outputs的shape。以及网络的参数量
         """
         X, y = next(iter(self.train_loader))
         X, y = X.to(self.device), y.to(self.device)
         outputs = self.net(X)
-        print(f"[log_X_y] 第一批次的shape如下：\n"
-              f"          X: {X.shape}, y: {y.shape}, outputs: {outputs.shape}")
+        print(f"[log] 第一批次的shape如下：\n"
+              f"      X: {X.shape}, y: {y.shape}, outputs: {outputs.shape}")
         if (len(outputs.shape) == 1 or outputs.shape[1] == 1) and self.eval_type == "acc":
-            print(f"[log_X_y] 请注意：outputs的维度为{outputs.shape}，在计算acc的时候使用的是"
+            print(f"[log] 请注意：outputs的维度为{outputs.shape}，在计算acc的时候使用的是"
                   f"predictions = (torch.sigmoid(outputs).view(-1) > 0.5).long()")
+
+        print("[log] ", end='')
+        self.view_parameters(view_net_struct=False, view_params_count=True, view_params_details=False)
 
     # [主函数]训练模型
     def train_net(self, net_save_path: str = None) -> None:
@@ -1011,7 +1014,7 @@ class NetTrainerFNN:
                 if view_params_details:
                     print("该层的参数：" + str(list(p.size())))
                 count += p.numel()
-            print(f"总参数量: {count}")
+            print(f"网络的总参数量: {count}")
             # print(f"Total params: {sum(p.numel() for p in self.net.parameters())}")
 
         # params = list(self.net.parameters())
@@ -1086,6 +1089,7 @@ class NetTrainerFNN:
 
                 # 统计正确预测的样本数和总样本数
                 correct_predictions += (predictions == targets).sum().item()
+                # print(f"shape: {predictions.shape} --- {targets.shape}")
                 num_samples += targets.size(0)
                 # print(targets.size(0))
                 # print(f"correct_predictions={correct_predictions}, num_samples={num_samples}")

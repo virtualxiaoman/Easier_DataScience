@@ -33,7 +33,7 @@ loss_fn = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
 
 trainer = NetTrainer(X, y, net, loss_fn, optimizer, epochs=2, eval_type="acc", batch_size=16, target_reshape_1D=False,
-                     eval_interval=1, eval_during_training=False)
+                     eval_interval=1, eval_during_training=True)
 trainer.view_parameters()
 trainer.train_net()
 acc = trainer.evaluate_net(delete_train=True)  # delete_train=True表示从cuda上删除训练集，只保留测试集
