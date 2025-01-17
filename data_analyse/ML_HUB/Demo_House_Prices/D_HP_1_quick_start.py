@@ -34,7 +34,7 @@ params = {
 # KFold交叉验证设置
 folds = KFold(n_splits=5, shuffle=True, random_state=42)
 
-oof_preds = np.zeros(X_train.shape[0])  # 存储每一折的验证集预测值，oof: out-of-fold（每个训练样本的验证集预测值）0
+oof_preds = np.zeros(X_train.shape[0])  # 存储每一折的验证集预测值，oof: out-of-fold（每个训练样本的验证集预测值）
 test_preds = np.zeros(X_test.shape[0])  # 存储测试集的平均预测值（所有折叠的预测结果）
 
 # 每次分割返回训练集索引 trn_idx 和验证集索引 val_idx
