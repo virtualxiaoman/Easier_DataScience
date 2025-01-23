@@ -4,7 +4,7 @@ import os
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import RidgeCV, LassoCV
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, AdaBoostRegressor, GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import StackingRegressor
@@ -262,6 +262,8 @@ rf = RandomForestRegressor(n_estimators=100, random_state=42)
 xgb_model = xgb.XGBRegressor(objective="reg:squarederror", n_estimators=1000, random_state=42)
 lgb_model = lgb.LGBMRegressor(n_estimators=1000, random_state=42, verbose=-1)  # -1表示不输出训练信息
 svr = SVR(kernel='rbf')
+ada_boost = AdaBoostRegressor(n_estimators=500, random_state=42)
+gb_reg = GradientBoostingRegressor(n_estimators=500, random_state=42)
 
 # 训练模型
 base_learners = [
@@ -270,7 +272,9 @@ base_learners = [
     ('rf', rf),
     ('xgb', xgb_model),
     ('lgb', lgb_model),
-    ('svr', svr)
+    ('svr', svr),
+    ('ada', ada_boost),
+    ('gb', gb_reg)
 ]
 stacked_model = StackedModelRegressor(base_learners)
 stacked_predictions = stacked_model.fit_and_predict(X_train, y_train, X_val, y_val, X_test)

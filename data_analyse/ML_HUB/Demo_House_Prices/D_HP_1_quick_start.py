@@ -1,3 +1,5 @@
+# House Price - Advanced Regression Techniques
+
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
@@ -16,8 +18,8 @@ all_data = all_data.fillna(all_data.mean())
 print(f"all_data shape: {all_data.shape}")
 
 # 切分数据
-X_train = all_data[:train.shape[0]]
-X_test = all_data[train.shape[0]:]
+X_train = all_data[:train.shape[0]].drop(['SalePrice', 'Id'], axis=1)
+X_test = all_data[train.shape[0]:].drop(['SalePrice', 'Id'], axis=1)
 y_train = train['SalePrice']
 
 # 设置LightGBM模型参数

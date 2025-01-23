@@ -9,6 +9,7 @@ import xgboost as xgb
 import lightgbm as lgb
 from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import StackingRegressor
 
 train = pd.read_csv('train.csv')
 test = pd.read_csv('test.csv')
@@ -63,8 +64,6 @@ for model in models:
     pred = model.predict(X_val_scaled if hasattr(model, 'coef_') else X_val)
     mse = mean_squared_error(y_val, pred)
     print(f'>>> {model.__class__.__name__}, RMSE: {np.sqrt(mse)}')
-
-from sklearn.ensemble import StackingRegressor
 
 # 基学习器：使用之前的模型
 base_learners = [
