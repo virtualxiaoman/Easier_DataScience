@@ -28,7 +28,7 @@ class DescData:
                           self.df[col].dtype))
         stats_df = pd.DataFrame(stats, columns=['Feature', 'n_unique', '缺失值占比(%)',
                                                 '最大类别占比(%)', 'type'])
-        stats_df.sort_values('缺失值占比(%)', ascending=False)
+        stats_df = stats_df.sort_values('缺失值占比(%)', ascending=False)  # 按缺失值占比降序排列
         return stats_df
 
     # 查看含有缺失值的列与缺失值数量
