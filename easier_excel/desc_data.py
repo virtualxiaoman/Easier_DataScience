@@ -52,6 +52,13 @@ class DescData:
 
 # 可视化数据分布
 def describe_and_visualize(df, table_name=None, exclude_columns=None):
+    """
+    描述并可视化数据分布
+    :param df: df
+    :param table_name: 表格名称，仅作为log的print
+    :param exclude_columns: 排除的列
+    :return: None
+    """
     print("\n[log] -------------------- \n")
     if table_name is not None:
         print(f"正在分析表格：{table_name}")
